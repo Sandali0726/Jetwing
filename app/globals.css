@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+  --jetwing-primary: #8B9E23;
+  --jetwing-primary-dark: #6B7A1A;
+  --jetwing-primary-light: #A5B82D;
+  --jetwing-secondary: #E91E8C;
+  --jetwing-secondary-dark: #C41970;
+  --jetwing-secondary-light: #F24BA0;
+  --jetwing-accent: #FFC107;
+  --jetwing-accent-dark: #FFB300;
+  --jetwing-accent-light: #FFD54F;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Georgia', 'Garamond', serif;
+}
