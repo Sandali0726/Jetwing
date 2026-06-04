@@ -1,0 +1,61 @@
+/* Jetwing Button Styles */
+
+.jetwing-btn-primary {
+  background-color: #8B9E23;
+  font-family: 'Georgia', 'Garamond', serif;
+}
+
+.jetwing-btn-primary:hover {
+  background-color: #6B7A1A;
+}
+
+.jetwing-btn-primary:active {
+  background-color: #556015;
+}
+
+.jetwing-btn-secondary {
+  background-color: #E91E8C;
+  font-family: 'Georgia', 'Garamond', serif;
+}
+
+.jetwing-btn-secondary:hover {
+  background-color: #C41970;
+}
+
+.jetwing-btn-secondary:active {
+  background-color: #9B1456;
+}
+
+.jetwing-btn-outline {
+  border-color: #8B9E23 !important;
+  color: #8B9E23;
+  font-family: 'Georgia', 'Garamond', serif;
+}
+
+.jetwing-btn-outline:hover {
+  background-color: rgba(139, 158, 35, 0.1);
+  border-color: #6B7A1A !important;
+  color: #6B7A1A;
+}
+
+.jetwing-btn-ghost {
+  font-family: 'Georgia', 'Garamond', serif;
+  color: #8B9E23;
+}
+
+.jetwing-btn-ghost:hover {
+  background-color: rgba(139, 158, 35, 0.1);
+}
+
+.jetwing-btn-danger {
+  background-color: #E91E8C;
+  font-family: 'Georgia', 'Garamond', serif;
+}
+
+.jetwing-btn-danger:hover {
+  background-color: #C41970;
+}
+
+.jetwing-btn-danger:active {
+  background-color: #9B1456;
+}
