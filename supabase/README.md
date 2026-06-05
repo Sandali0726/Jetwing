@@ -72,24 +72,32 @@ write policies for those paths.
 
 ## Scheduled jobs
 
-`expire_stale_offers()` can be scheduled with `pg_cron` (enable the extension in the
-Supabase dashboard → Database → Extensions):
+The SQL-side jobs run on Supabase **`pg_cron`** (no separate worker). Apply
+[`scheduled_jobs.sql`](scheduled_jobs.sql) after the migrations (enable the
+`pg_cron` and `pg_net` extensions first):
 
-```sql
-select cron.schedule(
-  'expire-stale-offers',
-  '0 6 * * *',                       -- 06:00 daily (set DB timezone to Asia/Colombo)
-  $$ select public.expire_stale_offers(); $$
-);
+| Job | Schedule | Function |
+| --- | --- | --- |
+| `expire-stale-offers` | daily 06:00 | `expire_stale_offers()` |
+| `refresh-customer-features` | nightly 02:00 | `refresh_customer_features()` |
+| `reconcile-campaign-metrics` | every 4h | `reconcile_campaign_metrics()` |
+| `generate-monthly-offers` | 20th, 08:00 | `net.http_post` → `generate-offers` Edge Function (template — fill in project ref + key) |
+
+Inspect runs: `select * from cron.job_run_details order by start_time desc;`
+
+Run any maintenance job **on demand** (Admin), without waiting for cron:
+
+```bash
+curl -X POST /api/v1/admin/jobs -d '{"job":"refresh_features"}'   # or expire_offers | reconcile_metrics
 ```
 
-The heavier monthly pipelines (`generate_monthly_offers`, `refresh_customer_features`,
-`nightly_pms_etl`, `send_campaign_emails`) remain on **Celery Beat** per the plan.
+Still external / on Celery per the plan: **`nightly_pms_etl`** (PMS API pull) and
+**HuggingFace batch scoring** (heavy ML). Campaign sending is app-driven
+(`POST /api/v1/campaigns/:id/send`) and can be automated via `pg_net` the same way
+as the monthly-offers job.
 
-## Next steps
+## Build / apply order
 
-1. ✅ Database schema, RLS, seed (this folder)
-2. ⬜ Supabase client + generated TypeScript types in the Next.js app (`lib/supabase`)
-3. ⬜ Next.js API routes (`app/api/v1/...`) for offers, scoring, campaigns
-4. ⬜ Edge Functions for Claude offer/email generation
-5. ⬜ Celery worker wiring (service_role key) for ETL + HuggingFace scoring
+1. `migrations/001`–`009` → `seed.sql` → `demo_data.sql` (optional) → `scheduled_jobs.sql`
+2. App: `lib/supabase` client + `lib/api` routes are already wired.
+3. Edge Functions: `supabase functions deploy generate-offers generate-email` (see `functions/README.md`).

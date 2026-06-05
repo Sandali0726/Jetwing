@@ -540,6 +540,9 @@ export interface Database {
       is_staff: { Args: Record<string, never>; Returns: boolean };
       activate_prompt: { Args: { _prompt_id: string }; Returns: undefined };
       expire_stale_offers: { Args: Record<string, never>; Returns: number };
+      build_campaign_audience: { Args: { _campaign_id: string }; Returns: number };
+      refresh_customer_features: { Args: Record<string, never>; Returns: number };
+      reconcile_campaign_metrics: { Args: Record<string, never>; Returns: number };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
