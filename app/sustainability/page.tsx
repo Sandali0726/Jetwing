@@ -1,13 +1,27 @@
 "use client"
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Download, Calendar, Building2 } from 'lucide-react';
 import { C, PROPERTIES, DATE_RANGES } from '@/components/sustainability/data';
+import { exportSustainabilityReport } from '@/components/sustainability/exportReport';
 import Overview from '@/components/sustainability/views/Overview';
 import { ClimateAction, EnergyManagement, WaterManagement, WasteManagement, Biodiversity } from '@/components/sustainability/views/Environment';
 import { CommunityImpact, EsgReports, RiskManagement, SustainabilityGoals } from '@/components/sustainability/views/SocialGov';
 
 type ViewId = 'overview' | 'climate' | 'energy' | 'water' | 'waste' | 'biodiversity' | 'community' | 'esg' | 'risk' | 'goals';
+
+const viewLabels: Record<ViewId, string> = {
+  overview: 'Dashboard Overview',
+  climate: 'Climate Action',
+  energy: 'Energy Management',
+  water: 'Water Management',
+  waste: 'Waste Management',
+  biodiversity: 'Biodiversity',
+  community: 'Community Impact',
+  esg: 'ESG Reports',
+  risk: 'Risk Management',
+  goals: 'Sustainability Goals',
+};
 
 function Dropdown({ icon: Icon, options, value, onChange, width = 200 }: {
   icon: React.ElementType; options: readonly string[]; value: string; onChange: (v: string) => void; width?: number;
@@ -49,6 +63,8 @@ export default function SustainabilityPage() {
   const [view, setView] = useState<ViewId>('overview');
   const [property, setProperty] = useState<string>(PROPERTIES[0]);
   const [range, setRange] = useState<string>(DATE_RANGES[2]);
+  const exportRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     const handleViewChange = (event: Event) => {
@@ -59,6 +75,25 @@ export default function SustainabilityPage() {
     window.addEventListener('sustainabilityViewChange', handleViewChange);
     return () => window.removeEventListener('sustainabilityViewChange', handleViewChange);
   }, []);
+
+  const handleExportReport = async () => {
+    if (!exportRef.current || isExporting) {
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      await exportSustainabilityReport(exportRef.current, {
+        title: `JetMind Sustainability Report - ${viewLabels[view]}`,
+        subtitle: `Property: ${property} | Period: ${range}`,
+        generatedAt: `Generated: ${new Date().toLocaleString()}`,
+        filename: `jetmind-sustainability-${view}.pdf`,
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const render = () => {
     switch (view) {
@@ -84,17 +119,21 @@ export default function SustainabilityPage() {
           <Dropdown icon={Calendar} options={DATE_RANGES} value={range} onChange={setRange} width={180} />
         </div>
         <button
+          onClick={handleExportReport}
+          disabled={isExporting}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ backgroundColor: C.primary }}
+          style={{ backgroundColor: C.primary, opacity: isExporting ? 0.75 : 1 }}
         >
           <Download className="w-4 h-4" />
-          Export Report
+          {isExporting ? 'Exporting...' : 'Export Report'}
         </button>
       </div>
 
       {/* Main content */}
       <main className="flex-1 overflow-y-auto pt-20 p-8" style={{ backgroundColor: C.bg }}>
-        {render()}
+        <div ref={exportRef}>
+          {render()}
+        </div>
       </main>
     </div>
   );
