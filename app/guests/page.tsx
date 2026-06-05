@@ -61,6 +61,8 @@ export default function GuestsPage() {
     } catch (e) {
       window.history.replaceState({}, '', window.location.pathname + (params.toString() ? '?' + params.toString() : ''));
     }
+
+
   };
 
   if (view === 'filtering') return <FilteringModule />;
