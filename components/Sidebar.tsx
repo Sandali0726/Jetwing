@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -8,14 +8,19 @@ import {
   Users,
   Leaf,
   Settings,
+  BarChart3, Search, Sparkles,
   CloudSun, Zap, Droplets, Trash2, Bird, FileBarChart, ShieldAlert, Target, ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const menuItems = [
   { icon: LayoutDashboard, label: 'Executive Dashboard', href: '/' },
-  { icon: Users, label: 'Guest Intelligence', href: '/guests' },
-  { icon: Leaf, label: 'Sustainability', href: '/sustainability', submenu: [
+  { id: 'guests', icon: Users, label: 'Guest Intelligence', href: '/guests', submenu: [
+    { id: 'analytics', label: 'Guest Analytics', icon: BarChart3 },
+    { id: 'filtering', label: 'Filtering & Intelligence', icon: Search },
+    { id: 'recommendations', label: 'Offer Recommendations', icon: Sparkles },
+  ] },
+  { id: 'sustainability', icon: Leaf, label: 'Sustainability', href: '/sustainability', submenu: [
     { id: 'overview', label: 'Dashboard Overview', icon: LayoutDashboard },
     { id: 'climate', label: 'Climate Action', icon: CloudSun },
     { id: 'energy', label: 'Energy Management', icon: Zap },
@@ -31,7 +36,33 @@ const menuItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [expandedSubmenus, setExpandedSubmenus] = useState<Set<string>>(new Set(pathname.includes('/sustainability') ? ['sustainability'] : []));
+  const [expandedSubmenus, setExpandedSubmenus] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const defaults: string[] = [];
+    if (pathname?.includes('/sustainability')) defaults.push('sustainability');
+    if (pathname?.includes('/guests')) defaults.push('guests');
+    setExpandedSubmenus(new Set(defaults));
+  }, [pathname]);
+
+  // Track the currently selected guest subview so the sidebar can render the active (bold) state
+  const [currentGuestView, setCurrentGuestView] = useState<string>('');
+
+  useEffect(() => {
+    const onGuest = (e: any) => {
+      const v = e?.detail?.view || 'analytics';
+      setCurrentGuestView(v);
+    };
+
+    // Initialize from URL if present, otherwise default to 'analytics' when on /guests
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const initial = params.get('view') || (pathname?.includes('/guests') ? 'analytics' : '');
+      if (initial) setCurrentGuestView(initial);
+    }
+
+    window.addEventListener('guestViewChange', onGuest as EventListener);
+    return () => window.removeEventListener('guestViewChange', onGuest as EventListener);
+  }, [pathname]);
 
   const toggleSubmenu = (id: string) => {
     const newSet = new Set(expandedSubmenus);
@@ -43,7 +74,7 @@ export function Sidebar() {
     setExpandedSubmenus(newSet);
   };
 
-  const isSustainabilityPage = pathname.includes('/sustainability');
+  
 
   return (
     <div className="flex flex-col h-screen w-64 border-r fixed left-0 top-0" style={{backgroundColor: '#ffffff', borderColor: '#E5E5E5'}}>
@@ -55,44 +86,54 @@ export function Sidebar() {
       <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-1">
         {menuItems.map((item) => {
           const isActive = pathname === item.href;
-          const isExpanded = expandedSubmenus.has('sustainability') && item.label === 'Sustainability';
-          const hasSubmenu = 'submenu' in item;
+          const hasSubmenu = !!item.submenu;
+          const isExpanded = item.id ? expandedSubmenus.has(item.id) : false;
+          const isItemPage = item.href ? pathname.includes(item.href) : false;
 
           return (
             <div key={item.href}>
               <button
-                onClick={() => hasSubmenu && isSustainabilityPage ? toggleSubmenu('sustainability') : undefined}
+                onClick={() => hasSubmenu && isItemPage && item.id ? toggleSubmenu(item.id) : undefined}
                 className={cn(
                   "w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200",
                   isActive ? "shadow-lg" : ""
                 )}
-                style={isActive || isSustainabilityPage ? {backgroundColor: '#f0f5e6', borderLeft: '3px solid #8B9E23'} : {backgroundColor: 'transparent'}}
+                style={isActive || isItemPage ? {backgroundColor: '#f0f5e6', borderLeft: '3px solid #8B9E23'} : {backgroundColor: 'transparent'}}
               >
                 <Link href={item.href} className="flex items-center gap-3 flex-1">
-                  <item.icon className="w-5 h-5 transition-colors" style={{color: isActive || isSustainabilityPage ? '#8B9E23' : '#999'}} />
-                  <span className="font-medium text-sm" style={{color: isActive || isSustainabilityPage ? '#8B9E23' : '#333'}}>{item.label}</span>
+                  <item.icon className="w-5 h-5 transition-colors" style={{color: isActive || isItemPage ? '#8B9E23' : '#999'}} />
+                  <span className="font-medium text-sm" style={{color: isActive || isItemPage ? '#8B9E23' : '#333'}}>{item.label}</span>
                 </Link>
-                {hasSubmenu && isSustainabilityPage && (
+                {hasSubmenu && isItemPage && (
                   <ChevronRight className="w-4 h-4 transition-transform" style={{color: '#8B9E23', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'}} />
                 )}
               </button>
 
-              {hasSubmenu && isSustainabilityPage && isExpanded && item.submenu && (
+              {hasSubmenu && isItemPage && isExpanded && item.submenu && (
                 <div className="mt-1 space-y-0.5 ml-2 pl-3 border-l-2" style={{borderColor: '#E5E5E5'}}>
                   {item.submenu.map((sub) => {
-                    const isSubActive = pathname === `/sustainability?view=${sub.id}`;
+                    const parentId = item.id === 'sustainability' ? 'sustainability' : item.id;
+                    let isSubActive = false;
+                    if (parentId === 'guests') {
+                      isSubActive = currentGuestView === sub.id;
+                    } else if (parentId === 'sustainability') {
+                      isSubActive = pathname === `/sustainability?view=${sub.id}`;
+                    }
+
                     return (
                       <button
                         key={sub.id}
                         onClick={() => {
-                          const event = new CustomEvent('sustainabilityViewChange', { detail: { view: sub.id } });
+                          const eventName = item.id === 'sustainability' ? 'sustainabilityViewChange' : 'guestViewChange';
+                          const event = new CustomEvent(eventName, { detail: { view: sub.id } });
                           window.dispatchEvent(event);
+                          if (item.id === 'guests') setCurrentGuestView(sub.id);
                         }}
                         className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors"
                         style={{backgroundColor: isSubActive ? '#E8F3D6' : 'transparent', color: isSubActive ? '#8B9E23' : '#666'}}
                       >
                         <sub.icon className="w-4 h-4" style={{color: isSubActive ? '#8B9E23' : '#999'}} />
-                        <span className="font-medium">{sub.label}</span>
+                        <span className={isSubActive ? 'font-bold' : 'font-medium'}>{sub.label}</span>
                       </button>
                     );
                   })}
