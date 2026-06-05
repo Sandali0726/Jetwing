@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Sparkles,
   Target,
@@ -72,8 +72,10 @@ interface Campaign {
   name: string;
   image: string;
   hotel: string;
+  propertyCount?: number;
   offerType: string;
   audience: string;
+  description?: string;
   status: 'Draft' | 'Scheduled' | 'Active' | 'Completed' | 'AI Recommended';
   revenueImpact: string;
   performance: string;
@@ -186,17 +188,17 @@ const MOCK_RECOMMENDATIONS: Recommendation[] = [
 ];
 
 const INITIAL_CAMPAIGNS: Campaign[] = [
-  { id: 'c1', name: 'Safari Adventure Summer', image: 'https://images.unsplash.com/photo-1516426122078-c23e76319801?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Yala', offerType: 'Package', audience: 'German Market', status: 'Active', revenueImpact: 'LKR 4.2M', performance: '18.4%', dateCreated: '15-May-2026' },
-  { id: 'c2', name: 'Ayurveda Autumn', image: 'https://images.unsplash.com/photo-1544161515-4af6b1d4640b?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Blue', offerType: 'Wellness', audience: 'Repeat Guests', status: 'Scheduled', revenueImpact: 'LKR 1.5M', performance: '12.1%', dateCreated: '10-May-2026' },
-  { id: 'c3', name: 'Family Festive Break', image: 'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing St. Andrew’s', offerType: 'Family', audience: 'Indian Markets', status: 'Draft', revenueImpact: 'LKR 3.5M', performance: '-', dateCreated: '20-May-2026' },
-  { id: 'c4', name: 'Elite Coastal Stay', image: 'https://images.unsplash.com/photo-1540553016722-983e48a2cd10?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Lighthouse', offerType: 'Luxury', audience: 'UK Market', status: 'Completed', revenueImpact: 'LKR 2.9M', performance: '21.5%', dateCreated: '01-May-2026' },
-  { id: 'c5', name: 'Whale Watching Galle', image: 'https://images.unsplash.com/photo-1568430462989-44163eb1752f?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Lighthouse', offerType: 'Excursion', audience: 'UK Market', status: 'Active', revenueImpact: 'LKR 1.2M', performance: '15.2%', dateCreated: '05-Jun-2026' },
-  { id: 'rec1-c', name: 'Safari Adventure Package', image: 'https://images.unsplash.com/photo-1516426122078-c23e76319801?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Yala', offerType: 'Package', audience: 'German Guests', status: 'AI Recommended', revenueImpact: 'LKR 4.2M', performance: '-', dateCreated: '01-Jul-2026' },
-  { id: 'rec2-c', name: 'Wellness Retreat Package', image: 'https://images.unsplash.com/photo-1544161515-4af6b1d4640b?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Vil Uyana', offerType: 'Wellness', audience: 'Repeat Guests', status: 'AI Recommended', revenueImpact: 'LKR 2.8M', performance: '-', dateCreated: '01-Jul-2026' },
-  { id: 'rec3-c', name: 'Family Escape Bundle', image: 'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing St. Andrew’s', offerType: 'Family', audience: 'Indian Markets', status: 'AI Recommended', revenueImpact: 'LKR 3.5M', performance: '-', dateCreated: '01-Jul-2026' },
-  { id: 'rec4-c', name: 'Whale Watching Experience', image: 'https://images.unsplash.com/photo-1568430462989-44163eb1752f?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Lighthouse', offerType: 'Excursion', audience: 'UK Market', status: 'AI Recommended', revenueImpact: 'LKR 1.9M', performance: '-', dateCreated: '01-Jul-2026' },
-  { id: 'rec5-c', name: 'Luxury Villa Upgrade', image: 'https://images.unsplash.com/photo-1540553016722-983e48a2cd10?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Vil Uyana', offerType: 'Luxury', audience: 'High Spenders', status: 'AI Recommended', revenueImpact: 'LKR 5.1M', performance: '-', dateCreated: '01-Jul-2026' },
-  { id: 'rec6-c', name: 'Cultural Discovery Package', image: 'https://images.unsplash.com/photo-1582650625119-3a31f8fa2699?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Lake', offerType: 'Cultural', audience: 'French Guests', status: 'AI Recommended', revenueImpact: 'LKR 2.4M', performance: '-', dateCreated: '01-Jul-2026' },
+  { id: 'c1', name: 'Safari Adventure Summer', image: 'https://images.unsplash.com/photo-1516426122078-c23e76319801?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Yala', offerType: 'Package', audience: 'German Market', description: '3-day safari package with luxury tented stays and private naturalist guides.', status: 'Active', revenueImpact: 'LKR 4.2M', performance: '18.4%', dateCreated: '15-May-2026' },
+  { id: 'c2', name: 'Ayurveda Autumn', image: 'https://images.unsplash.com/photo-1544161515-4af6b1d4640b?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Blue', offerType: 'Wellness', audience: 'Repeat Guests', description: '7-day Ayurveda retreat focusing on detox and wellbeing.', status: 'Scheduled', revenueImpact: 'LKR 1.5M', performance: '12.1%', dateCreated: '10-May-2026' },
+  { id: 'c3', name: 'Family Festive Break', image: 'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing St. Andrew’s', offerType: 'Family', audience: 'Indian Markets', description: 'Family bundle with complimentary kids stay and activities.', status: 'Draft', revenueImpact: 'LKR 3.5M', performance: '-', dateCreated: '20-May-2026' },
+  { id: 'c4', name: 'Elite Coastal Stay', image: 'https://images.unsplash.com/photo-1540553016722-983e48a2cd10?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Lighthouse', offerType: 'Luxury', audience: 'UK Market', description: 'Coastal villa stays with private excursions and gourmet dining.', status: 'Completed', revenueImpact: 'LKR 2.9M', performance: '21.5%', dateCreated: '01-May-2026' },
+  { id: 'c5', name: 'Whale Watching Galle', image: 'https://images.unsplash.com/photo-1568430462989-44163eb1752f?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Lighthouse', offerType: 'Excursion', audience: 'UK Market', description: 'Whale watching catamaran tours with onboard breakfast.', status: 'Active', revenueImpact: 'LKR 1.2M', performance: '15.2%', dateCreated: '05-Jun-2026' },
+  { id: 'rec1-c', name: 'Safari Adventure Package', image: 'https://images.unsplash.com/photo-1516426122078-c23e76319801?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Yala', offerType: 'Package', audience: 'German Guests', description: 'A curated 3-day safari experience with luxury tented accommodation and private naturalist guides.', status: 'AI Recommended', revenueImpact: 'LKR 4.2M', performance: '-', dateCreated: '01-Jul-2026' },
+  { id: 'rec2-c', name: 'Wellness Retreat Package', image: 'https://images.unsplash.com/photo-1544161515-4af6b1d4640b?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Vil Uyana', offerType: 'Wellness', audience: 'Repeat Guests', description: '7-day holistic wellness program including Ayurveda treatments, yoga, and organic dining.', status: 'AI Recommended', revenueImpact: 'LKR 2.8M', performance: '-', dateCreated: '01-Jul-2026' },
+  { id: 'rec3-c', name: 'Family Escape Bundle', image: 'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing St. Andrew’s', offerType: 'Family', audience: 'Indian Markets', description: 'Complimentary stay for children under 12, including kids club access.', status: 'AI Recommended', revenueImpact: 'LKR 3.5M', performance: '-', dateCreated: '01-Jul-2026' },
+  { id: 'rec4-c', name: 'Whale Watching Experience', image: 'https://images.unsplash.com/photo-1568430462989-44163eb1752f?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Lighthouse', offerType: 'Excursion', audience: 'UK Market', description: 'Luxury catamaran whale watching tours with gourmet breakfast on board.', status: 'AI Recommended', revenueImpact: 'LKR 1.9M', performance: '-', dateCreated: '01-Jul-2026' },
+  { id: 'rec5-c', name: 'Luxury Villa Upgrade', image: 'https://images.unsplash.com/photo-1540553016722-983e48a2cd10?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Vil Uyana', offerType: 'Luxury', audience: 'High Spenders', description: 'Exclusive villa upgrade offer for high-value guests.', status: 'AI Recommended', revenueImpact: 'LKR 5.1M', performance: '-', dateCreated: '01-Jul-2026' },
+  { id: 'rec6-c', name: 'Cultural Discovery Package', image: 'https://images.unsplash.com/photo-1582650625119-3a31f8fa2699?auto=format&fit=crop&q=80&w=800', hotel: 'Jetwing Lake', offerType: 'Cultural', audience: 'French Guests', description: 'Immersive cultural tours with temple visits and craft workshops.', status: 'AI Recommended', revenueImpact: 'LKR 2.4M', performance: '-', dateCreated: '01-Jul-2026' },
 ];
 
 export default function OfferIntelligence() {
@@ -208,11 +210,15 @@ export default function OfferIntelligence() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All Status');
-  const [typeFilter, setTypeFilter] = useState('All Types');
+  const [typeFilter, setTypeFilter] = useState('Offer Type');
   const [dateRange, setDateRange] = useState('All Time');
   const [showFilters, setShowFilters] = useState(false);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
   const [showCampaignDetails, setShowCampaignDetails] = useState<Campaign | null>(null);
+
+  // Pagination
+  const [page, setPage] = useState(1);
+  const PER_PAGE = 5;
 
   // Wizard State
   const [businessGoal, setBusinessGoal] = useState('Increase occupancy at Jetwing Yala during August.');
@@ -255,6 +261,13 @@ export default function OfferIntelligence() {
     });
   }, [campaigns, searchQuery, statusFilter, typeFilter, activeDashboardTab]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter, typeFilter, activeDashboardTab, campaigns]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCampaigns.length / PER_PAGE));
+  const paginatedCampaigns = filteredCampaigns.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+
   const handleGenerateRecommendations = () => {
     setIsGenerating(true);
     setTimeout(() => {
@@ -290,16 +303,6 @@ export default function OfferIntelligence() {
           <h1 className="text-4xl font-serif font-medium" style={{ color: COLORS.text }}>Offer Intelligence</h1>
           <p className="mt-2 text-lg font-light text-slate-500">AI-Powered Offer Recommendations & Campaign Management</p>
         </div>
-        <button
-          onClick={() => {
-            const el = document.getElementById('ai-section');
-            el?.scrollIntoView({ behavior: 'smooth' });
-          }}
-          className="px-8 py-4 rounded-full text-white font-semibold shadow-lg transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
-          style={{ background: COLORS.goldGradient }}
-        >
-          <Sparkles className="w-5 h-5" /> Start AI Recommendation
-        </button>
       </div>
 
       {/* KPI Cards */}
@@ -478,14 +481,6 @@ export default function OfferIntelligence() {
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
             </div>
-            <Button
-              variant="outline"
-              className="rounded-xl p-2.5 border-slate-100 hover:bg-slate-50 h-[38px] flex items-center gap-2 text-xs font-bold"
-              onClick={() => setShowFilters(!showFilters)}
-            >
-              <Filter className="w-4 h-4 text-slate-600" />
-              Filters
-            </Button>
           </div>
         </div>
 
@@ -496,7 +491,7 @@ export default function OfferIntelligence() {
                 <thead>
                   <tr className="bg-slate-50/80 border-b border-slate-100">
                     <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-500">Campaign Details</th>
-                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-500">Property</th>
+                    <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-500">Count</th>
                     <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-500">Offer Type</th>
                     <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-500">Status</th>
                     <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-500">Financial Impact</th>
@@ -504,7 +499,7 @@ export default function OfferIntelligence() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {filteredCampaigns.map(c => (
+                  {paginatedCampaigns.map(c => (
                     <tr key={c.id} className="hover:bg-slate-50/50 transition-colors group">
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-4">
@@ -513,14 +508,14 @@ export default function OfferIntelligence() {
                           </div>
                           <div className="space-y-0.5">
                             <p className="font-bold text-slate-900 text-[15px] group-hover:text-amber-800 transition-colors">{c.name}</p>
-                            <p className="text-[11px] text-slate-400 font-bold uppercase tracking-tight">{c.audience}</p>
+                            <p className="text-[11px] text-slate-400 font-bold uppercase tracking-tight">{c.description ? (c.description.length > 100 ? c.description.slice(0,100) + '...' : c.description) : c.audience}</p>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-2">
                            <Briefcase className="w-4 h-4 text-slate-300" />
-                           <span className="text-sm text-slate-600 font-semibold">{c.hotel}</span>
+                           <span className="text-sm text-slate-600 font-semibold">{c.propertyCount ?? 0}</span>
                         </div>
                       </td>
                       <td className="px-6 py-5">
@@ -615,6 +610,22 @@ export default function OfferIntelligence() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="p-4 border-t border-slate-100 bg-white flex items-center justify-between">
+            <div className="text-sm text-slate-600">Showing {(filteredCampaigns.length === 0) ? 0 : ((page - 1) * PER_PAGE) + 1} - {Math.min(page * PER_PAGE, filteredCampaigns.length)} of {filteredCampaigns.length} campaigns</div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className={cn('px-3 py-2 rounded-lg text-sm font-bold', page === 1 ? 'text-slate-300 bg-slate-50' : 'text-slate-700 bg-white shadow-sm')}
+              >Prev</button>
+              <div className="text-sm text-slate-600 px-3">Page {page} / {totalPages}</div>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className={cn('px-3 py-2 rounded-lg text-sm font-bold', page === totalPages ? 'text-slate-300 bg-slate-50' : 'text-slate-700 bg-white shadow-sm')}
+              >Next</button>
+            </div>
           </div>
         </CardContent>
         </Card>
