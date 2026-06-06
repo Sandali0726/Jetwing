@@ -75,7 +75,7 @@ export function Sidebar() {
 
   useEffect(() => {
     const onGuest = (e: unknown) => {
-      const v = e?.detail?.view || 'analytics';
+      const v = (e as any)?.detail?.view || 'analytics';
       setCurrentGuestView(v);
     };
 
