@@ -661,63 +661,73 @@ export function AreaTrend({
   xKey?: string;
   unit?: string;
 }) {
+  // fixed slot width per month to keep interval consistent across ranges;
+  // wrap chart in a horizontally-scrollable container similar to `VBar`.
+  const slotWidth = 55; // px per month (label + padding)
+  const minWidth = Math.max(600, data.length * slotWidth);
+
   return (
     <div style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart
-          data={data}
-          margin={{ left: 0, right: 8, top: 4, bottom: 4 }}
-        >
-          <defs>
-            {series.map((s) => (
-              <linearGradient
-                key={s.key}
-                id={`grad-${s.key}`}
-                x1="0"
-                y1="0"
-                x2="0"
-                y2="1"
-              >
-                <stop offset="0%" stopColor={s.color} stopOpacity={0.3} />
-                <stop offset="100%" stopColor={s.color} stopOpacity={0} />
-              </linearGradient>
-            ))}
-          </defs>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            vertical={false}
-            stroke={C.border}
-          />
-          <XAxis
-            dataKey={xKey}
-            tick={{ fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            tick={{ fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-            tickFormatter={(v) => `${Number(v).toLocaleString()}${unit}`}
-          />
-          <Tooltip
-            contentStyle={tooltipStyle}
-            formatter={(v) => `${Number(v).toLocaleString()}${unit}`}
-          />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
-          {series.map((s) => (
-            <Area
-              key={s.key}
-              type="monotone"
-              dataKey={s.key}
-              name={s.name}
-              stroke={s.color}
-              strokeWidth={2}
-              fill={`url(#grad-${s.key})`}
+      <div style={{ overflowX: "auto", width: "100%" }}>
+        <div style={{ width: `${minWidth}px`, height: `${height}px` }}>
+          <AreaChart
+            width={minWidth}
+            height={height}
+            data={data}
+            margin={{ left: 0, right: 8, top: 4, bottom: 4 }}
+          >
+            <defs>
+              {series.map((s) => (
+                <linearGradient
+                  key={s.key}
+                  id={`grad-${s.key}`}
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <stop offset="0%" stopColor={s.color} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={s.color} stopOpacity={0} />
+                </linearGradient>
+              ))}
+            </defs>
+            <CartesianGrid
+              strokeDasharray="3 3"
+              vertical={false}
+              stroke={C.border}
             />
-          ))}
-        </AreaChart>
-      </ResponsiveContainer>
+            <XAxis
+              dataKey={xKey}
+              tick={{ fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+              interval={0}
+            />
+            <YAxis
+              tick={{ fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={(v) => `${Number(v).toLocaleString()}${unit}`}
+            />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              formatter={(v) => `${Number(v).toLocaleString()}${unit}`}
+            />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            {series.map((s) => (
+              <Area
+                key={s.key}
+                type="monotone"
+                dataKey={s.key}
+                name={s.name}
+                stroke={s.color}
+                strokeWidth={2}
+                fill={`url(#grad-${s.key})`}
+              />
+            ))}
+          </AreaChart>
+        </div>
+      </div>
     </div>
   );
 }

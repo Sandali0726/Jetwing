@@ -341,8 +341,18 @@ export function ClimateAction({
 // ── Energy Management ────────────────────────────────────────────────────────
 export function EnergyManagement({
   rows,
+  showHotelComparison = false,
+  startYear,
+  startMonth,
+  endYear,
+  endMonth,
 }: {
   rows: SustainabilityEnvironmentRow[];
+  showHotelComparison?: boolean;
+  startYear?: number;
+  startMonth?: number;
+  endYear?: number;
+  endMonth?: number;
 }) {
   if (rows.length === 0) {
     return (
@@ -374,11 +384,71 @@ export function EnergyManagement({
   const renewableShare =
     totalEnergy === 0 ? 0 : (renewableEnergy / totalEnergy) * 100;
 
-  const energyMonthlyFromSupabase = rows.map((row) => ({
-    month: monthLabel(row.report_year, row.report_month),
-    grid: n(row.grid_electricity_kwh) / 1000,
-    solar: n(row.solar_pv_kwh) / 1000,
-  }));
+  // Build a months list from the provided date range (if present) so the
+  // AreaTrend shows every month in the selected range (including months
+  // with no data), matching the behaviour used in Monthly Emissions Trend.
+  function buildMonthsList() {
+    if (
+      Number.isInteger(startYear) &&
+      Number.isInteger(startMonth) &&
+      Number.isInteger(endYear) &&
+      Number.isInteger(endMonth)
+    ) {
+      const list: { year: number; month: number }[] = [];
+      let y = startYear as number;
+      let m = startMonth as number;
+      while (
+        y < (endYear as number) ||
+        (y === (endYear as number) && m <= (endMonth as number))
+      ) {
+        list.push({ year: y, month: m });
+        m += 1;
+        if (m > 12) {
+          m = 1;
+          y += 1;
+        }
+      }
+      return list;
+    }
+
+    // fallback: infer from available rows
+    const sorted = [...rows].sort((a, b) =>
+      a.report_year === b.report_year
+        ? a.report_month - b.report_month
+        : a.report_year - b.report_year,
+    );
+    if (sorted.length === 0) return [];
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const list: { year: number; month: number }[] = [];
+    let y = first.report_year;
+    let m = first.report_month;
+    while (
+      y < last.report_year ||
+      (y === last.report_year && m <= last.report_month)
+    ) {
+      list.push({ year: y, month: m });
+      m += 1;
+      if (m > 12) {
+        m = 1;
+        y += 1;
+      }
+    }
+    return list;
+  }
+
+  const months = buildMonthsList();
+
+  const energyMonthlyFromSupabase = months.map(({ year, month }) => {
+    const match = rows.find(
+      (r) => r.report_year === year && r.report_month === month,
+    );
+    return {
+      month: `${monthLabel(year, month)} ${year}`,
+      grid: match ? n(match.grid_electricity_kwh) / 1000 : 0,
+      solar: match ? n(match.solar_pv_kwh) / 1000 : 0,
+    };
+  });
 
   const renewableMixFromSupabase = [
     {
@@ -403,7 +473,7 @@ export function EnergyManagement({
       <section data-export-block="true">
         <PageHeader
           title="Energy Management"
-          subtitle="Electricity consumption, solar generation and demand analytics"
+          subtitle="Electricity consumption, solar generation and periodic / hotel wise analytics"
         />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatTile
@@ -437,7 +507,7 @@ export function EnergyManagement({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="lg:col-span-2">
             <ChartCard
-              title="Grid vs Solar — Monthly"
+              title="Grid vs Solar - Monthly"
               subtitle="MWh consumed / generated"
             >
               <AreaTrend
@@ -458,34 +528,26 @@ export function EnergyManagement({
         </div>
       </section>
 
-      <section data-export-block="true">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ChartCard
-            title="Hotel-wise Energy Usage"
-            subtitle="Grid consumption (MWh)"
-          >
-            <HBar
-              data={energyByPropertyFromSupabase}
-              color={C.blue}
-              unit=" MWh"
-              height={300}
-            />
-          </ChartCard>
-          <ChartCard
-            title="Peak Demand Analysis"
-            subtitle="Peak vs average load (kW)"
-          >
-            <AreaTrend
-              data={peakDemand}
-              series={[
-                { key: "peak", name: "Peak Demand", color: C.secondary },
-                { key: "avg", name: "Average Load", color: C.primary },
-              ]}
-              unit=""
-            />
-          </ChartCard>
-        </div>
-      </section>
+      {showHotelComparison && (
+        <section data-export-block="true">
+          <div className="flex justify-center mb-6">
+            <div className="w-full max-w-5xl">
+              <ChartCard
+                title="Hotel-wise Energy Usage"
+                subtitle="Grid consumption (MWh)"
+              >
+                <HBar
+                  data={energyByPropertyFromSupabase}
+                  color={C.blue}
+                  unit=" MWh"
+                  height={360}
+                  barSize={22}
+                />
+              </ChartCard>
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

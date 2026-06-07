@@ -396,7 +396,20 @@ export default function SustainabilityPage() {
         ) : environmentError ? (
           <div className="p-6 text-sm text-red-600">{environmentError}</div>
         ) : (
-          <EnergyManagement rows={environmentRows} />
+          (() => {
+            const s = toYearMonth(startDate);
+            const e = toYearMonth(endDate);
+            return (
+              <EnergyManagement
+                rows={environmentRows}
+                showHotelComparison={selectedPropertyId === "all"}
+                startYear={s.year}
+                startMonth={s.month}
+                endYear={e.year}
+                endMonth={e.month}
+              />
+            );
+          })()
         );
       case "water":
         return environmentLoading ? (
