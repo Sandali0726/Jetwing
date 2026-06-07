@@ -576,8 +576,16 @@ function StressBar({ index, level }: { index: number; level: string }) {
 
 export function WaterManagement({
   rows,
+  startYear,
+  startMonth,
+  endYear,
+  endMonth,
 }: {
   rows: SustainabilityEnvironmentRow[];
+  startYear?: number;
+  startMonth?: number;
+  endYear?: number;
+  endMonth?: number;
 }) {
   if (rows.length === 0) {
     return (
@@ -607,6 +615,36 @@ export function WaterManagement({
     totalWater === 0 ? 0 : (recycledWater / totalWater) * 100;
   const latest = latestRow(rows);
 
+  // Compute Water per Occupied Room for the selected period.
+  // Preferred: weighted average of monthly `water_l_per_occupied_room` by `occupied_room_nights`.
+  const totalOccupied = sumRows(rows, "occupied_room_nights");
+  const weightedWaterSum = rows.reduce(
+    (sum, row) =>
+      sum + n(row.water_l_per_occupied_room) * n(row.occupied_room_nights),
+    0,
+  );
+
+  const waterPerOccupiedWeighted =
+    totalOccupied > 0 ? weightedWaterSum / totalOccupied : undefined;
+
+  // Fallback: compute from total water divided by occupied nights
+  const waterPerOccupiedFromTotals =
+    totalOccupied > 0 ? totalWater / totalOccupied : undefined;
+
+  const waterPerOccupiedDisplay =
+    waterPerOccupiedWeighted ??
+    waterPerOccupiedFromTotals ??
+    (latest?.water_l_per_occupied_room == null
+      ? undefined
+      : Number(latest.water_l_per_occupied_room));
+
+  const waterPerOccupiedSub =
+    waterPerOccupiedWeighted != null
+      ? "Weighted average across selected period"
+      : waterPerOccupiedFromTotals != null
+        ? "Computed from total water / occupied nights"
+        : "Latest available month";
+
   const waterByPropertyFromSupabase = rows.map((row) => ({
     name: row.property_name,
     value: n(row.total_water_l) / 1000,
@@ -614,29 +652,158 @@ export function WaterManagement({
       (n(row.total_water_l) * n(row.water_recycling_rate_pct)) / 100 / 1000,
   }));
 
+  // Aggregate source volumes across the selected period and compute
+  // percentage share of total withdrawal. Fall back to the latest
+  // month's shares when there is no volume in the selection.
+  const municipalVolume = rows.reduce(
+    (sum, row) =>
+      sum + (n(row.total_water_l) * n(row.municipal_share_pct)) / 100,
+    0,
+  );
+  const groundwaterVolume = rows.reduce(
+    (sum, row) =>
+      sum + (n(row.total_water_l) * n(row.groundwater_share_pct)) / 100,
+    0,
+  );
+  const rainwaterVolume = rows.reduce(
+    (sum, row) =>
+      sum + (n(row.total_water_l) * n(row.rainwater_share_pct)) / 100,
+    0,
+  );
+
+  const totalVolume = totalWater;
+
+  let municipalPct: number;
+  let groundwaterPct: number;
+  let rainPct: number;
+  let recycledPct: number;
+
+  if (totalVolume > 0) {
+    municipalPct = (municipalVolume / totalVolume) * 100;
+    groundwaterPct = (groundwaterVolume / totalVolume) * 100;
+    rainPct = (rainwaterVolume / totalVolume) * 100;
+
+    // Try prior-month proxy for recycled-withdrawal: use recycled volume
+    // reported in the month immediately before the selected range start.
+    const priorMonths = 1;
+    let priorRecycledVolume = 0;
+
+    if (Number.isInteger(startYear) && Number.isInteger(startMonth)) {
+      const startIndex =
+        (startYear as number) * 12 + ((startMonth as number) - 1);
+      const priorStartIndex = startIndex - priorMonths;
+      priorRecycledVolume = rows.reduce((sum, row) => {
+        const rowIndex =
+          Number(row.report_year) * 12 + (Number(row.report_month) - 1);
+        if (rowIndex >= priorStartIndex && rowIndex < startIndex) {
+          return (
+            sum + (n(row.total_water_l) * n(row.water_recycling_rate_pct)) / 100
+          );
+        }
+        return sum;
+      }, 0);
+    }
+
+    if (priorRecycledVolume > 0) {
+      recycledPct = (priorRecycledVolume / totalVolume) * 100;
+    } else {
+      // fallback: represent reclaimed source as residual of known shares
+      const reclaimedSourceVolume = Math.max(
+        0,
+        totalVolume - (municipalVolume + groundwaterVolume + rainwaterVolume),
+      );
+      recycledPct = (reclaimedSourceVolume / totalVolume) * 100;
+    }
+  } else {
+    municipalPct = n(latest?.municipal_share_pct);
+    groundwaterPct = n(latest?.groundwater_share_pct);
+    rainPct = n(latest?.rainwater_share_pct);
+
+    // fallback: treat residual as reclaimed source share
+    recycledPct = Math.max(0, 100 - (municipalPct + groundwaterPct + rainPct));
+  }
+
   const waterSourceSplitFromSupabase = [
     {
       name: "Municipal",
-      value: n(latest?.municipal_share_pct),
+      value: Number(municipalPct.toFixed(1)),
       color: C.blueDark,
     },
     {
       name: "Groundwater",
-      value: n(latest?.groundwater_share_pct),
+      value: Number(groundwaterPct.toFixed(1)),
       color: C.blue,
     },
-    { name: "Rainwater", value: n(latest?.rainwater_share_pct), color: C.teal },
+    { name: "Rainwater", value: Number(rainPct.toFixed(1)), color: C.teal },
     {
-      name: "Recycled",
-      value: n(latest?.water_recycling_rate_pct),
+      name: "Recycled (source)",
+      value: Number(recycledPct.toFixed(1)),
       color: C.primaryLight,
     },
   ];
 
-  const waterRecyclingTrendFromSupabase = rows.map((row) => ({
-    month: monthLabel(row.report_year, row.report_month),
-    recycled: n(row.water_recycling_rate_pct),
-  }));
+  // Build months list from selected range (if present) so the chart shows
+  // every month in the selection, including months with no data.
+  function buildMonthsList() {
+    if (
+      Number.isInteger(startYear) &&
+      Number.isInteger(startMonth) &&
+      Number.isInteger(endYear) &&
+      Number.isInteger(endMonth)
+    ) {
+      const list: { year: number; month: number }[] = [];
+      let y = startYear as number;
+      let m = startMonth as number;
+      while (
+        y < (endYear as number) ||
+        (y === (endYear as number) && m <= (endMonth as number))
+      ) {
+        list.push({ year: y, month: m });
+        m += 1;
+        if (m > 12) {
+          m = 1;
+          y += 1;
+        }
+      }
+      return list;
+    }
+
+    const sorted = [...rows].sort((a, b) =>
+      a.report_year === b.report_year
+        ? a.report_month - b.report_month
+        : a.report_year - b.report_year,
+    );
+    if (sorted.length === 0) return [];
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const list: { year: number; month: number }[] = [];
+    let y = first.report_year;
+    let m = first.report_month;
+    while (
+      y < last.report_year ||
+      (y === last.report_year && m <= last.report_month)
+    ) {
+      list.push({ year: y, month: m });
+      m += 1;
+      if (m > 12) {
+        m = 1;
+        y += 1;
+      }
+    }
+    return list;
+  }
+
+  const months = buildMonthsList();
+
+  const waterRecyclingTrendFromSupabase = months.map(({ year, month }) => {
+    const match = rows.find(
+      (r) => r.report_year === year && r.report_month === month,
+    );
+    return {
+      month: `${monthLabel(year, month)} ${year}`,
+      recycled: match ? n(match.water_recycling_rate_pct) : 0,
+    };
+  });
 
   return (
     <div>
@@ -661,11 +828,11 @@ export function WaterManagement({
           <StatTile
             label="Water / Occupied Room"
             value={
-              latest?.water_l_per_occupied_room == null
+              waterPerOccupiedDisplay == null
                 ? "N/A"
-                : `${Number(latest.water_l_per_occupied_room).toFixed(1)} L`
+                : `${Number(waterPerOccupiedDisplay).toFixed(1)} L`
             }
-            sub="Latest available month"
+            sub={waterPerOccupiedSub}
             accent={C.green}
           />
           <StatTile
@@ -703,20 +870,24 @@ export function WaterManagement({
       </section>
 
       <section data-export-block="true">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ChartCard
-            title="Water Recycling Performance"
-            subtitle="Recycled share trend (%)"
-          >
-            <AreaTrend
-              data={waterRecyclingTrendFromSupabase}
-              series={[{ key: "recycled", name: "Recycled %", color: C.teal }]}
-              unit="%"
-            />
-          </ChartCard>
+        <div className="flex justify-center mb-6">
+          <div className="w-full max-w-6xl">
+            <ChartCard
+              title="Water Recycling Performance"
+              subtitle="Recycled share trend (%)"
+            >
+              <AreaTrend
+                data={waterRecyclingTrendFromSupabase}
+                series={[
+                  { key: "recycled", name: "Recycled %", color: C.teal },
+                ]}
+                unit="%"
+              />
+            </ChartCard>
+          </div>
 
-          <div className="space-y-6">
-            <Card className="p-5">
+          {/* <div className="space-y-6"> */}
+          {/* <Card className="p-5">
               <p className="text-sm font-bold mb-3" style={{ color: C.text }}>
                 Water Stress Index by Hotel
               </p>
@@ -736,9 +907,9 @@ export function WaterManagement({
                   </div>
                 ))}
               </div>
-            </Card>
+            </Card> */}
 
-            <Card className="p-5">
+          {/* <Card className="p-5">
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle className="w-4 h-4" style={{ color: C.amber }} />
                 <p className="text-sm font-bold" style={{ color: C.text }}>
@@ -775,8 +946,8 @@ export function WaterManagement({
                   </div>
                 ))}
               </div>
-            </Card>
-          </div>
+            </Card> */}
+          {/* </div> */}
         </div>
       </section>
     </div>

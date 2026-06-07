@@ -78,7 +78,12 @@ export async function GET(request: NextRequest) {
           const rowIndex = Number(row.report_year) * 12 + Number(row.report_month);
           const startIndex = Number(parsedStartYear) * 12 + (Number(parsedStartMonth) - 1);
           const endIndex = Number(parsedEndYear) * 12 + (Number(parsedEndMonth) - 1);
-          return rowIndex >= startIndex && rowIndex <= endIndex;
+
+          const priorMonthsParam = searchParams.get('priorMonths');
+          const parsedPriorMonths = priorMonthsParam ? Number(priorMonthsParam) : 0;
+          const startIndexAdjusted = startIndex - (Number.isFinite(parsedPriorMonths) ? parsedPriorMonths : 0);
+
+          return rowIndex >= startIndexAdjusted && rowIndex <= endIndex;
         })
       : data ?? [];
 

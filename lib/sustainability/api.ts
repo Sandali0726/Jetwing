@@ -30,6 +30,7 @@ export async function getEnvironmentDashboardRows(params?: {
   startMonth?: number;
   endYear?: number;
   endMonth?: number;
+  priorMonths?: number;
   year?: number;
   month?: number;
 }): Promise<SustainabilityEnvironmentRow[]> {
@@ -55,6 +56,10 @@ export async function getEnvironmentDashboardRows(params?: {
 
   if (params?.month !== undefined) {
     searchParams.set('month', String(params.month));
+  }
+
+  if (params?.priorMonths !== undefined) {
+    searchParams.set('priorMonths', String(params.priorMonths));
   }
 
   const queryString = searchParams.toString();

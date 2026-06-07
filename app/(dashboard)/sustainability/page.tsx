@@ -275,6 +275,7 @@ export default function SustainabilityPage() {
           startMonth: start.month,
           endYear: end.year,
           endMonth: end.month,
+          priorMonths: 1, // include one prior month to estimate recycled-withdrawal proxy
         });
 
         setEnvironmentRows(rows);
@@ -419,7 +420,19 @@ export default function SustainabilityPage() {
         ) : environmentError ? (
           <div className="p-6 text-sm text-red-600">{environmentError}</div>
         ) : (
-          <WaterManagement rows={environmentRows} />
+          (() => {
+            const s = toYearMonth(startDate);
+            const e = toYearMonth(endDate);
+            return (
+              <WaterManagement
+                rows={environmentRows}
+                startYear={s.year}
+                startMonth={s.month}
+                endYear={e.year}
+                endMonth={e.month}
+              />
+            );
+          })()
         );
       case "waste":
         return environmentLoading ? (
