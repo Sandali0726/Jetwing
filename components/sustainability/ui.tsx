@@ -523,7 +523,7 @@ export function HBar({
 }) {
   const h = height ?? Math.max(220, data.length * 38);
   return (
-    <div style={{ height: h }}>
+    <div style={{ height: h, width: "100%", minWidth: 0 }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           layout="vertical"

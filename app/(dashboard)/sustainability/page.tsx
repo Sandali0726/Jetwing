@@ -22,10 +22,12 @@ import {
   getEnvironmentDashboardRows,
   getProperties,
   getSustainabilityDashboardData,
+  getWasteMonthlySummaryRows,
 } from "@/lib/sustainability/api";
 import type {
   PropertyOption,
   SustainabilityEnvironmentRow,
+  SustainabilityWasteMonthlySummaryRow,
 } from "@/lib/sustainability/types";
 
 type ViewId =
@@ -189,6 +191,9 @@ export default function SustainabilityPage() {
   const [environmentRows, setEnvironmentRows] = useState<
     SustainabilityEnvironmentRow[]
   >([]);
+  const [wasteSummaryRows, setWasteSummaryRows] = useState<
+    SustainabilityWasteMonthlySummaryRow[]
+  >([]);
   const [biodiversityRows, setBiodiversityRows] = useState<
     Record<string, unknown>[]
   >([]);
@@ -269,19 +274,29 @@ export default function SustainabilityPage() {
         const start = toYearMonth(startDate);
         const end = toYearMonth(endDate);
 
-        const rows = await getEnvironmentDashboardRows({
-          propertyId: selectedPropertyId,
-          startYear: start.year,
-          startMonth: start.month,
-          endYear: end.year,
-          endMonth: end.month,
-          priorMonths: 1, // include one prior month to estimate recycled-withdrawal proxy
-        });
+        const [rows, wasteRows] = await Promise.all([
+          getEnvironmentDashboardRows({
+            propertyId: selectedPropertyId,
+            startYear: start.year,
+            startMonth: start.month,
+            endYear: end.year,
+            endMonth: end.month,
+          }),
+          getWasteMonthlySummaryRows({
+            propertyId: selectedPropertyId,
+            startYear: start.year,
+            startMonth: start.month,
+            endYear: end.year,
+            endMonth: end.month,
+          }),
+        ]);
 
         setEnvironmentRows(rows);
+        setWasteSummaryRows(wasteRows);
       } catch (err) {
         console.error(err);
         setEnvironmentRows([]);
+        setWasteSummaryRows([]);
         setEnvironmentError("Failed to load environment data from Supabase.");
       } finally {
         setEnvironmentLoading(false);
@@ -442,7 +457,20 @@ export default function SustainabilityPage() {
         ) : environmentError ? (
           <div className="p-6 text-sm text-red-600">{environmentError}</div>
         ) : (
-          <WasteManagement rows={environmentRows} />
+          (() => {
+            const s = toYearMonth(startDate);
+            const e = toYearMonth(endDate);
+            return (
+              <WasteManagement
+                rows={wasteSummaryRows}
+                startYear={s.year}
+                startMonth={s.month}
+                endYear={e.year}
+                endMonth={e.month}
+                showHotelComparison={selectedPropertyId === "all"}
+              />
+            );
+          })()
         );
       case "biodiversity":
         return <Biodiversity rows={filterByProperty(biodiversityRows)} />;

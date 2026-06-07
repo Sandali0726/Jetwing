@@ -2,7 +2,10 @@
 
 import React from "react";
 import { AlertTriangle } from "lucide-react";
-import type { SustainabilityEnvironmentRow } from "@/lib/sustainability/types";
+import type {
+  SustainabilityEnvironmentRow,
+  SustainabilityWasteMonthlySummaryRow,
+} from "@/lib/sustainability/types";
 import {
   C,
   carbonMonthly,
@@ -18,8 +21,6 @@ import {
   waterRecyclingTrend,
   waterStress,
   leakAlerts,
-  wasteDiversion,
-  wasteMethods,
   wasteMonthly,
   biodigesters,
   speciesRecorded,
@@ -51,14 +52,16 @@ function monthLabel(year: number, month: number) {
   });
 }
 
-function sumRows(
-  rows: SustainabilityEnvironmentRow[],
-  key: keyof SustainabilityEnvironmentRow,
+function sumRows<T extends Record<string, unknown>, K extends keyof T>(
+  rows: T[],
+  key: K,
 ) {
   return rows.reduce((total, row) => total + n(row[key] as number | null), 0);
 }
 
-function latestRow(rows: SustainabilityEnvironmentRow[]) {
+function latestRow<T extends { report_year: number; report_month: number }>(
+  rows: T[],
+) {
   return [...rows].sort((a, b) => {
     if (a.report_year !== b.report_year) {
       return b.report_year - a.report_year;
@@ -957,8 +960,18 @@ export function WaterManagement({
 // ── Waste Management ─────────────────────────────────────────────────────────
 export function WasteManagement({
   rows,
+  startYear,
+  startMonth,
+  endYear,
+  endMonth,
+  showHotelComparison = false,
 }: {
-  rows: SustainabilityEnvironmentRow[];
+  rows: SustainabilityWasteMonthlySummaryRow[];
+  startYear?: number;
+  startMonth?: number;
+  endYear?: number;
+  endMonth?: number;
+  showHotelComparison?: boolean;
 }) {
   if (rows.length === 0) {
     return (
@@ -988,6 +1001,11 @@ export function WasteManagement({
   }, 0);
   const diversionRate =
     totalWaste === 0 ? 0 : (divertedWaste / totalWaste) * 100;
+  const recycledWasteRateWeighted = rows.reduce((sum, row) => {
+    return sum + (n(row.total_waste_kg) * n(row.recycling_rate_pct)) / 100;
+  }, 0);
+  const recyclingRate =
+    totalWaste === 0 ? 0 : (recycledWasteRateWeighted / totalWaste) * 100;
   const latest = latestRow(rows);
 
   const wasteDiversionFromSupabase = [
@@ -995,18 +1013,126 @@ export function WasteManagement({
     { name: "Landfill", value: landfillWaste / 1000, color: C.red },
   ];
 
-  const wasteMonthlyFromSupabase = rows.map((row) => ({
-    month: monthLabel(row.report_year, row.report_month),
-    generated: n(row.total_waste_kg) / 1000,
-    recycled: n(row.diverted_kg) / 1000,
-  }));
+  const treatmentMethodsFromSupabase = [
+    {
+      name: "Recycled",
+      value: sumRows(rows, "recycled_kg") / 1000,
+      color: C.primaryLight,
+    },
+    {
+      name: "Composted",
+      value: sumRows(rows, "composted_kg") / 1000,
+      color: C.primaryDark,
+    },
+    {
+      name: "Biogas Recovery",
+      value: sumRows(rows, "biogas_kg") / 1000,
+      color: C.primary,
+    },
+    { name: "Reused", value: sumRows(rows, "reused_kg") / 1000, color: C.teal },
+    {
+      name: "Hazardous Recycling",
+      value: sumRows(rows, "hazardous_recycled_kg") / 1000,
+      color: C.accent,
+    },
+    {
+      name: "Landfill",
+      value: sumRows(rows, "landfill_kg") / 1000,
+      color: C.red,
+    },
+    {
+      name: "Other Disposed",
+      value: sumRows(rows, "other_disposed_kg") / 1000,
+      color: C.muted,
+    },
+  ].filter((item) => item.value > 0);
+
+  function buildMonthsList() {
+    if (
+      Number.isInteger(startYear) &&
+      Number.isInteger(startMonth) &&
+      Number.isInteger(endYear) &&
+      Number.isInteger(endMonth)
+    ) {
+      const list: { year: number; month: number }[] = [];
+      let y = startYear as number;
+      let m = startMonth as number;
+      while (
+        y < (endYear as number) ||
+        (y === (endYear as number) && m <= (endMonth as number))
+      ) {
+        list.push({ year: y, month: m });
+        m += 1;
+        if (m > 12) {
+          m = 1;
+          y += 1;
+        }
+      }
+      return list;
+    }
+
+    const sorted = [...rows].sort((a, b) =>
+      a.report_year === b.report_year
+        ? a.report_month - b.report_month
+        : a.report_year - b.report_year,
+    );
+    if (sorted.length === 0) return [];
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const list: { year: number; month: number }[] = [];
+    let y = first.report_year;
+    let m = first.report_month;
+    while (
+      y < last.report_year ||
+      (y === last.report_year && m <= last.report_month)
+    ) {
+      list.push({ year: y, month: m });
+      m += 1;
+      if (m > 12) {
+        m = 1;
+        y += 1;
+      }
+    }
+    return list;
+  }
+
+  const months = buildMonthsList();
+
+  const wasteMonthlyFromSupabase = months.map(({ year, month }) => {
+    const match = rows.find(
+      (r) => r.report_year === year && r.report_month === month,
+    );
+    return {
+      month: `${monthLabel(year, month)} ${year}`,
+      generated: match ? n(match.total_waste_kg) / 1000 : 0,
+      diverted: match ? n(match.diverted_kg) / 1000 : 0,
+    };
+  });
+
+  const wasteByHotelFromSupabase = Array.from(
+    rows.reduce((map, row) => {
+      const key = row.property_id || row.property_name;
+      const current = map.get(key) ?? {
+        name: row.property_name,
+        value: 0,
+      };
+      current.value += n(row.total_waste_kg);
+      map.set(key, current);
+      return map;
+    }, new Map<string, { name: string; value: number }>()),
+  )
+    .map(([, value]) => ({
+      name: value.name,
+      value: value.value / 1000,
+    }))
+    .sort((a, b) => b.value - a.value);
 
   return (
     <div>
       <section data-export-block="true">
         <PageHeader
           title="Waste Management"
-          subtitle="Generation, recycling, composting and biodigester performance"
+          subtitle="Generation, recycling and Diversion Analysis"
         />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatTile
@@ -1029,12 +1155,8 @@ export function WasteManagement({
           />
           <StatTile
             label="Recycling Rate"
-            value={
-              latest?.recycling_rate_pct == null
-                ? "N/A"
-                : `${n(latest.recycling_rate_pct).toFixed(1)}%`
-            }
-            sub="Latest month"
+            value={`${recyclingRate.toFixed(1)}%`}
+            sub="Weighted across selected period"
             accent={C.accent}
           />
         </div>
@@ -1047,25 +1169,47 @@ export function WasteManagement({
           </ChartCard>
           <div className="lg:col-span-2">
             <ChartCard title="Treatment Methods" subtitle="By volume (tonnes)">
-              <HBar data={wasteMethods} perBarColor unit=" t" height={260} />
+              <HBar
+                data={treatmentMethodsFromSupabase}
+                perBarColor
+                unit=" t"
+                height={260}
+              />
             </ChartCard>
           </div>
         </div>
       </section>
 
       <section data-export-block="true">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ChartCard title="Generated vs Recycled" subtitle="Monthly (tonnes)">
-            <VBar
+        <div
+          className={`grid grid-cols-1 gap-6 ${showHotelComparison ? "lg:grid-cols-2" : ""}`}
+        >
+          <ChartCard title="Generated vs Diverted" subtitle="Monthly (tonnes)">
+            <AreaTrend
               data={wasteMonthlyFromSupabase}
-              bars={[
+              series={[
                 { key: "generated", name: "Generated", color: C.muted },
-                { key: "recycled", name: "Recycled", color: C.primary },
+                { key: "diverted", name: "Diverted", color: C.primary },
               ]}
               unit=" t"
+              height={300}
             />
           </ChartCard>
-          <Card className="p-5">
+          {showHotelComparison && (
+            <ChartCard
+              title="Total Waste by Hotel"
+              subtitle="Selected period (tonnes)"
+            >
+              <VBar
+                data={wasteByHotelFromSupabase}
+                xKey="name"
+                bars={[{ key: "value", name: "Waste", color: C.muted }]}
+                unit=" t"
+                height={300}
+              />
+            </ChartCard>
+          )}
+          {/* <Card className="p-5">
             <p className="text-sm font-bold mb-4" style={{ color: C.text }}>
               Biodigester Performance
             </p>
@@ -1110,7 +1254,7 @@ export function WasteManagement({
                 preventing 6,800 kg of single-use plastic from landfill
               </p>
             </div>
-          </Card>
+          </Card> */}
         </div>
       </section>
     </div>
