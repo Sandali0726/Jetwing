@@ -20,6 +20,7 @@ import {
   type HotelPerf,
 } from "../data";
 import { Card, KpiCard, SectionLabel, ProgressBar, PageHeader } from "../ui";
+import { useSustainabilityKpis } from "@/app/hooks/useSustainabilityKpis";
 
 const insightMeta: Record<
   Insight["type"],
@@ -113,8 +114,47 @@ function ScoreBar({
   );
 }
 
-export default function Overview() {
+export default function Overview({
+  propertyId,
+  startYear,
+  startMonth,
+  endYear,
+  endMonth,
+}: {
+  propertyId?: string | null;
+  startYear?: number;
+  startMonth?: number;
+  endYear?: number;
+  endMonth?: number;
+}) {
   const ranked = [...hotelPerformance].sort((a, b) => b.score - a.score);
+  // Defaults when no props provided
+  const now = new Date();
+  const sYear = startYear ?? now.getFullYear();
+  const sMonth = startMonth ?? 1;
+  const eYear = endYear ?? now.getFullYear();
+  const eMonth = endMonth ?? now.getMonth() + 1;
+  const selectedPropertyId: string | undefined = propertyId ?? undefined;
+
+  const {
+    data: KPIS,
+    isLoading: kpisLoading,
+    error: kpisError,
+  } = useSustainabilityKpis({
+    propertyId: selectedPropertyId,
+    startYear: sYear,
+    startMonth: sMonth,
+    endYear: eYear,
+    endMonth: eMonth,
+  });
+
+  if (kpisLoading) {
+    return <div>Loading sustainability KPIs...</div>;
+  }
+
+  if (kpisError) {
+    return <div>{kpisError}</div>;
+  }
   const kpiColors = [
     C.green,
     C.primary,
@@ -133,7 +173,7 @@ export default function Overview() {
       <section data-export-block="true">
         <PageHeader
           title="Dashboard Overview"
-          subtitle="Group-wide sustainability performance at a glance · FY 2024/25"
+          subtitle="ustainability performance at a glance"
         />
 
         {/* KPI grid */}
@@ -149,8 +189,8 @@ export default function Overview() {
               dir={k.deltaDir}
               good={k.good}
               prev={k.prev}
-              progress={k.progress}
-              target={k.target}
+              progress={k.progress ?? 0}
+              target={k.target ?? ""}
               spark={k.spark}
               color={kpiColors[i % kpiColors.length]}
             />
