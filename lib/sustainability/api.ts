@@ -26,6 +26,10 @@ export async function getProperties(): Promise<PropertyOption[]> {
 
 export async function getEnvironmentDashboardRows(params?: {
   propertyId?: string;
+  startYear?: number;
+  startMonth?: number;
+  endYear?: number;
+  endMonth?: number;
   year?: number;
   month?: number;
 }): Promise<SustainabilityEnvironmentRow[]> {
@@ -35,11 +39,21 @@ export async function getEnvironmentDashboardRows(params?: {
     searchParams.set('propertyId', params.propertyId);
   }
 
-  if (params?.year) {
+  if (
+    params?.startYear !== undefined &&
+    params?.startMonth !== undefined &&
+    params?.endYear !== undefined &&
+    params?.endMonth !== undefined
+  ) {
+    searchParams.set('startYear', String(params.startYear));
+    searchParams.set('startMonth', String(params.startMonth));
+    searchParams.set('endYear', String(params.endYear));
+    searchParams.set('endMonth', String(params.endMonth));
+  } else if (params?.year !== undefined) {
     searchParams.set('year', String(params.year));
   }
 
-  if (params?.month) {
+  if (params?.month !== undefined) {
     searchParams.set('month', String(params.month));
   }
 

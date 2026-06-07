@@ -403,6 +403,60 @@ const tooltipStyle = {
   boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
 };
 
+function monthName(month: number) {
+  return new Date(2000, month - 1, 1).toLocaleString("en", { month: "short" });
+}
+
+function CustomBarTooltip({
+  active,
+  payload,
+  label,
+  unit,
+  data,
+  xKey,
+  bars,
+}: any) {
+  if (!active || !payload || payload.length === 0) return null;
+  const p =
+    data?.find((row: any) => String(row?.[xKey]) === String(label)) ||
+    payload[0]?.payload ||
+    {};
+  let labelText = label;
+  if (p && p.year) {
+    if (typeof p.monthNum === "number") {
+      labelText = `${monthName(p.monthNum)} ${p.year}`;
+    } else if (typeof p.month === "string") {
+      labelText = `${p.month} ${p.year}`;
+    }
+  }
+
+  return (
+    <div style={{ padding: 8, ...tooltipStyle, background: "#fff" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+        {labelText}
+      </div>
+      {bars.map((bar: any, idx: number) => {
+        const raw = p?.[bar.key];
+        const fallbackItem = payload.find(
+          (item: any) => item.dataKey === bar.key,
+        );
+        const value = Number(raw ?? fallbackItem?.value ?? 0);
+        return (
+          <div
+            key={idx}
+            style={{ display: "flex", justifyContent: "space-between", gap: 8 }}
+          >
+            <div style={{ color: bar.color, fontSize: 12 }}>{bar.name}</div>
+            <div
+              style={{ fontSize: 12 }}
+            >{`${Number(value).toLocaleString()}${unit}`}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Donut ────────────────────────────────────────────────────────────────────
 export function Donut({
   data,
@@ -453,6 +507,7 @@ export function HBar({
   height,
   perBarColor = false,
   dataKey = "value",
+  barSize,
 }: {
   data: {
     name: string;
@@ -464,6 +519,7 @@ export function HBar({
   height?: number;
   perBarColor?: boolean;
   dataKey?: string;
+  barSize?: number;
 }) {
   const h = height ?? Math.max(220, data.length * 38);
   return (
@@ -489,17 +545,23 @@ export function HBar({
           <YAxis
             type="category"
             dataKey="name"
-            width={150}
+            width={180}
             tick={{ fontSize: 11 }}
             axisLine={false}
             tickLine={false}
+            // interval={0}
           />
           <Tooltip
             contentStyle={tooltipStyle}
             formatter={(v) => [`${Number(v).toLocaleString()}${unit}`, ""]}
             cursor={{ fill: "rgba(0,0,0,0.03)" }}
           />
-          <Bar dataKey={dataKey} fill={color} radius={[0, 4, 4, 0]}>
+          <Bar
+            dataKey={dataKey}
+            fill={color}
+            radius={[0, 4, 4, 0]}
+            barSize={barSize}
+          >
             {perBarColor &&
               data.map((d, i) => <Cell key={i} fill={d.color ?? color} />)}
           </Bar>
@@ -525,45 +587,62 @@ export function VBar({
   unit?: string;
   stacked?: boolean;
 }) {
+  // fixed slot width per month for consistent bar sizing; allow horizontal scroll when many months
+  const slotWidth = 64; // px per month (bar + label padding)
+  const minWidth = Math.max(600, data.length * slotWidth);
+
   return (
     <div style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ left: 0, right: 8, top: 4, bottom: 4 }}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            vertical={false}
-            stroke={C.border}
-          />
-          <XAxis
-            dataKey={xKey}
-            tick={{ fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            tick={{ fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-            tickFormatter={(v) => `${Number(v).toLocaleString()}${unit}`}
-          />
-          <Tooltip
-            contentStyle={tooltipStyle}
-            formatter={(v) => `${Number(v).toLocaleString()}${unit}`}
-            cursor={{ fill: "rgba(0,0,0,0.03)" }}
-          />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
-          {bars.map((b) => (
-            <Bar
-              key={b.key}
-              dataKey={b.key}
-              name={b.name}
-              fill={b.color}
-              radius={[4, 4, 0, 0]}
-              stackId={stacked ? "a" : undefined}
+      <div style={{ overflowX: "auto", width: "100%" }}>
+        <div style={{ width: `${minWidth}px`, height: `${height}px` }}>
+          <BarChart
+            width={minWidth}
+            height={height}
+            data={data}
+            margin={{ left: 0, right: 8, top: 4, bottom: 4 }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              vertical={false}
+              stroke={C.border}
             />
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
+            <XAxis
+              dataKey={xKey}
+              tick={{ fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+              interval={0}
+            />
+            <YAxis
+              tick={{ fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={(v) => `${Number(v).toLocaleString()}${unit}`}
+            />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              labelStyle={{ fontWeight: 700, color: C.text }}
+              formatter={(v: unknown, name: unknown) => [
+                `${Number(v ?? 0).toLocaleString()}${unit}`,
+                String(name ?? ""),
+              ]}
+              cursor={{ fill: "rgba(0,0,0,0.03)" }}
+            />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            {bars.map((b) => (
+              <Bar
+                key={b.key}
+                dataKey={b.key}
+                name={b.name}
+                fill={b.color}
+                radius={[4, 4, 0, 0]}
+                stackId={stacked ? "a" : undefined}
+                barSize={Math.max(12, slotWidth - 16)}
+              />
+            ))}
+          </BarChart>
+        </div>
+      </div>
     </div>
   );
 }

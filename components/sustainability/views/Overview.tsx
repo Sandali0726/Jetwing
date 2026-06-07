@@ -198,7 +198,7 @@ export default function Overview({
       <section data-export-block="true">
         <PageHeader
           title="Dashboard Overview"
-          subtitle="ustainability performance at a glance"
+          subtitle="Sustainability performance at a glance"
         />
 
         {/* KPI grid */}

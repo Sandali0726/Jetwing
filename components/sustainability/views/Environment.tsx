@@ -46,8 +46,8 @@ function n(value: number | null | undefined) {
 }
 
 function monthLabel(year: number, month: number) {
-  return new Date(year, month - 1, 1).toLocaleString('en', {
-    month: 'short',
+  return new Date(year, month - 1, 1).toLocaleString("en", {
+    month: "short",
   });
 }
 
@@ -82,7 +82,21 @@ function noDataMessage(title: string, subtitle: string) {
 }
 
 // ── Climate Action ───────────────────────────────────────────────────────────
-export function ClimateAction({ rows }: { rows: SustainabilityEnvironmentRow[] }) {
+export function ClimateAction({
+  rows,
+  showHotelComparison = false,
+  startYear,
+  startMonth,
+  endYear,
+  endMonth,
+}: {
+  rows: SustainabilityEnvironmentRow[];
+  showHotelComparison?: boolean;
+  startYear?: number;
+  startMonth?: number;
+  endYear?: number;
+  endMonth?: number;
+}) {
   if (rows.length === 0) {
     return (
       <div>
@@ -90,37 +104,150 @@ export function ClimateAction({ rows }: { rows: SustainabilityEnvironmentRow[] }
           title="Climate Action"
           subtitle="Carbon emissions analytics and scope breakdown"
         />
-        {noDataMessage("Climate Action", "Add rows to sustainability_environment_dashboard_monthly")}
+        {noDataMessage(
+          "Climate Action",
+          "Add rows to sustainability_environment_dashboard_monthly",
+        )}
       </div>
     );
   }
 
-  const totalScope1 = rows.reduce((total, row) => total + n(row.scope1_tco2e), 0);
-  const totalScope2 = rows.reduce((total, row) => total + n(row.scope2_tco2e), 0);
-  const totalEmissions = rows.reduce((total, row) => total + n(row.total_scope1_2_tco2e), 0);
+  const totalScope1 = rows.reduce(
+    (total, row) => total + n(row.scope1_tco2e),
+    0,
+  );
+  const totalScope2 = rows.reduce(
+    (total, row) => total + n(row.scope2_tco2e),
+    0,
+  );
+  const totalEmissions = rows.reduce(
+    (total, row) => total + n(row.total_scope1_2_tco2e),
+    0,
+  );
   const latest = latestRow(rows);
   const missingFactorCount = rows.reduce(
     (total, row) => total + n(row.missing_emission_factor_count),
     0,
   );
 
-  const carbonMonthlyFromSupabase = rows.map((row) => ({
-    month: monthLabel(row.report_year, row.report_month),
-    scope1: n(row.scope1_tco2e),
-    scope2: n(row.scope2_tco2e),
-  }));
+  // Compute CO2 per guest-night using weighted average when possible.
+  // Preferred: weighted average of monthly `kgco2e_per_occupied_room` by `occupied_room_nights`.
+  const totalOccupied = sumRows(rows, "occupied_room_nights");
+  const weightedKgSum = rows.reduce(
+    (sum, row) =>
+      sum + n(row.kgco2e_per_occupied_room) * n(row.occupied_room_nights),
+    0,
+  );
+
+  const co2PerGuestWeighted =
+    totalOccupied > 0 ? weightedKgSum / totalOccupied : undefined;
+
+  // Fallback: compute from total emissions (tCO2e -> kg) divided by occupied nights
+  const totalEmissionsKg = totalEmissions * 1000; // tCO2e -> kgCO2e
+  const co2PerGuestFromTotals =
+    totalOccupied > 0 ? totalEmissionsKg / totalOccupied : undefined;
+
+  // Final display value preference: weighted -> totals-derived -> latest row -> N/A
+  const co2PerGuestDisplay =
+    co2PerGuestWeighted ??
+    co2PerGuestFromTotals ??
+    (latest?.kgco2e_per_occupied_room == null
+      ? undefined
+      : Number(latest.kgco2e_per_occupied_room));
+
+  // Build months list from selected range if provided, otherwise infer from rows
+  function buildMonthsList() {
+    if (
+      Number.isInteger(startYear) &&
+      Number.isInteger(startMonth) &&
+      Number.isInteger(endYear) &&
+      Number.isInteger(endMonth)
+    ) {
+      const list: { year: number; month: number }[] = [];
+      let y = startYear as number;
+      let m = startMonth as number;
+      while (
+        y < (endYear as number) ||
+        (y === (endYear as number) && m <= (endMonth as number))
+      ) {
+        list.push({ year: y, month: m });
+        m += 1;
+        if (m > 12) {
+          m = 1;
+          y += 1;
+        }
+      }
+      return list;
+    }
+
+    // fallback: infer from available rows
+    const sorted = [...rows].sort((a, b) =>
+      a.report_year === b.report_year
+        ? a.report_month - b.report_month
+        : a.report_year - b.report_year,
+    );
+    if (sorted.length === 0) return [];
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const list: { year: number; month: number }[] = [];
+    let y = first.report_year;
+    let m = first.report_month;
+    while (
+      y < last.report_year ||
+      (y === last.report_year && m <= last.report_month)
+    ) {
+      list.push({ year: y, month: m });
+      m += 1;
+      if (m > 12) {
+        m = 1;
+        y += 1;
+      }
+    }
+    return list;
+  }
+
+  const months = buildMonthsList();
+
+  const carbonMonthlyFromSupabase = months.map(({ year, month }) => {
+    const match = rows.find(
+      (r) => r.report_year === year && r.report_month === month,
+    );
+    return {
+      label: `${monthLabel(year, month)} ${year}`,
+      month: monthLabel(year, month),
+      monthNum: month,
+      year,
+      scope1: match ? n(match.scope1_tco2e) : 0,
+      scope2: match ? n(match.scope2_tco2e) : 0,
+    };
+  });
 
   const scopeSplitFromSupabase = [
-    { name: 'Scope 1', value: Number(totalScope1.toFixed(2)), color: C.accent },
-    { name: 'Scope 2', value: Number(totalScope2.toFixed(2)), color: C.blue },
+    { name: "Scope 1", value: Number(totalScope1.toFixed(2)), color: C.accent },
+    { name: "Scope 2", value: Number(totalScope2.toFixed(2)), color: C.blue },
   ];
+
+  const hotelEmissionsComparisonFromSupabase = Array.from(
+    rows.reduce((map, row) => {
+      const key = row.property_id || row.property_name;
+      const current = map.get(key) ?? {
+        name: row.property_name,
+        value: 0,
+      };
+      current.value += n(row.total_scope1_2_tco2e);
+      map.set(key, current);
+      return map;
+    }, new Map<string, { name: string; value: number }>()),
+  )
+    .map(([, value]) => value)
+    .sort((a, b) => b.value - a.value);
 
   return (
     <div>
       <section data-export-block="true">
         <PageHeader
           title="Climate Action"
-          subtitle="Carbon emissions analytics, scope breakdown and AI-driven forecasting"
+          subtitle="Carbon emissions analytics and Scope breakdown"
         />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatTile
@@ -130,21 +257,33 @@ export function ClimateAction({ rows }: { rows: SustainabilityEnvironmentRow[] }
             accent={C.primary}
           />
           <StatTile
-            label="Scope 1 — Direct"
+            label="Scope 1 - Direct"
             value={`${totalScope1.toFixed(1)} tCO₂e`}
             sub="Direct emissions"
             accent={C.accent}
           />
           <StatTile
-            label="Scope 2 — Indirect"
+            label="Scope 2 - Indirect"
             value={`${totalScope2.toFixed(1)} tCO₂e`}
             sub="Grid electricity emissions"
             accent={C.blue}
           />
           <StatTile
             label="CO₂ / Guest Night"
-            value={latest?.kgco2e_per_occupied_room == null ? 'N/A' : `${Number(latest.kgco2e_per_occupied_room).toFixed(1)} kg`}
-            sub={missingFactorCount > 0 ? `${missingFactorCount} missing emission factors` : 'Latest available month'}
+            value={
+              co2PerGuestDisplay == null
+                ? "N/A"
+                : `${Number(co2PerGuestDisplay).toFixed(1)} kg`
+            }
+            sub={
+              co2PerGuestWeighted != null
+                ? "Weighted average across selected period"
+                : co2PerGuestFromTotals != null
+                  ? "Computed from total emissions / occupied nights"
+                  : missingFactorCount > 0
+                    ? `${missingFactorCount} missing emission factors`
+                    : "Latest available month"
+            }
             accent={C.green}
           />
         </div>
@@ -160,6 +299,7 @@ export function ClimateAction({ rows }: { rows: SustainabilityEnvironmentRow[] }
               <VBar
                 data={carbonMonthlyFromSupabase}
                 stacked
+                xKey="label"
                 bars={[
                   { key: "scope1", name: "Scope 1", color: C.accent },
                   { key: "scope2", name: "Scope 2", color: C.blue },
@@ -168,38 +308,42 @@ export function ClimateAction({ rows }: { rows: SustainabilityEnvironmentRow[] }
               />
             </ChartCard>
           </div>
-          <ChartCard title="Scope Split" subtitle="FY 2024/25 (tCO₂)">
+          <ChartCard title="Scope Split" subtitle="(tCO₂)">
             <Donut data={scopeSplitFromSupabase} unit=" tCO₂" />
           </ChartCard>
         </div>
       </section>
 
-      <section data-export-block="true">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <ChartCard
-            title="Carbon Reduction Progress"
-            subtitle="Trajectory toward 2030 target (tCO₂)"
-          >
-            <VBar
-              data={carbonReductionProgress}
-              xKey="year"
-              bars={[{ key: "value", name: "Emissions", color: C.primary }]}
-            />
-          </ChartCard>
-          <ChartCard
-            title="AI Forecast — Next 12 Months"
-            subtitle="Projected emissions with 95% confidence band"
-          >
-            <ForecastChart data={carbonForecast} />
-          </ChartCard>
-        </div>
-      </section>
+      {showHotelComparison && (
+        <section data-export-block="true">
+          <div className="flex justify-center mb-6">
+            <div className="w-full max-w-5xl">
+              <ChartCard
+                title="Hotel Emissions Comparison"
+                subtitle="Total emissions by hotel for the selected period (tCO₂e)"
+              >
+                <HBar
+                  data={hotelEmissionsComparisonFromSupabase}
+                  color={C.primary}
+                  unit=" tCO₂e"
+                  height={360}
+                  barSize={22}
+                />
+              </ChartCard>
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
 
 // ── Energy Management ────────────────────────────────────────────────────────
-export function EnergyManagement({ rows }: { rows: SustainabilityEnvironmentRow[] }) {
+export function EnergyManagement({
+  rows,
+}: {
+  rows: SustainabilityEnvironmentRow[];
+}) {
   if (rows.length === 0) {
     return (
       <div>
@@ -207,15 +351,28 @@ export function EnergyManagement({ rows }: { rows: SustainabilityEnvironmentRow[
           title="Energy Management"
           subtitle="Electricity consumption and renewable energy share"
         />
-        {noDataMessage("Energy Management", "Add rows to sustainability_environment_dashboard_monthly")}
+        {noDataMessage(
+          "Energy Management",
+          "Add rows to sustainability_environment_dashboard_monthly",
+        )}
       </div>
     );
   }
 
-  const totalEnergy = rows.reduce((total, row) => total + n(row.total_energy_kwh), 0);
-  const renewableEnergy = rows.reduce((total, row) => total + n(row.renewable_energy_kwh), 0);
-  const solarEnergy = rows.reduce((total, row) => total + n(row.solar_pv_kwh), 0);
-  const renewableShare = totalEnergy === 0 ? 0 : (renewableEnergy / totalEnergy) * 100;
+  const totalEnergy = rows.reduce(
+    (total, row) => total + n(row.total_energy_kwh),
+    0,
+  );
+  const renewableEnergy = rows.reduce(
+    (total, row) => total + n(row.renewable_energy_kwh),
+    0,
+  );
+  const solarEnergy = rows.reduce(
+    (total, row) => total + n(row.solar_pv_kwh),
+    0,
+  );
+  const renewableShare =
+    totalEnergy === 0 ? 0 : (renewableEnergy / totalEnergy) * 100;
 
   const energyMonthlyFromSupabase = rows.map((row) => ({
     month: monthLabel(row.report_year, row.report_month),
@@ -224,8 +381,16 @@ export function EnergyManagement({ rows }: { rows: SustainabilityEnvironmentRow[
   }));
 
   const renewableMixFromSupabase = [
-    { name: 'Renewable', value: Number(renewableShare.toFixed(1)), color: C.primary },
-    { name: 'Non Renewable', value: Number(Math.max(0, 100 - renewableShare).toFixed(1)), color: C.muted },
+    {
+      name: "Renewable",
+      value: Number(renewableShare.toFixed(1)),
+      color: C.primary,
+    },
+    {
+      name: "Non Renewable",
+      value: Number(Math.max(0, 100 - renewableShare).toFixed(1)),
+      color: C.muted,
+    },
   ];
 
   const energyByPropertyFromSupabase = rows.map((row) => ({
@@ -347,7 +512,11 @@ function StressBar({ index, level }: { index: number; level: string }) {
   );
 }
 
-export function WaterManagement({ rows }: { rows: SustainabilityEnvironmentRow[] }) {
+export function WaterManagement({
+  rows,
+}: {
+  rows: SustainabilityEnvironmentRow[];
+}) {
   if (rows.length === 0) {
     return (
       <div>
@@ -355,31 +524,51 @@ export function WaterManagement({ rows }: { rows: SustainabilityEnvironmentRow[]
           title="Water Management"
           subtitle="Consumption, recycling and water source split"
         />
-        {noDataMessage("Water Management", "Add rows to sustainability_environment_dashboard_monthly")}
+        {noDataMessage(
+          "Water Management",
+          "Add rows to sustainability_environment_dashboard_monthly",
+        )}
       </div>
     );
   }
 
-  const totalWater = rows.reduce((total, row) => total + n(row.total_water_l), 0);
+  const totalWater = rows.reduce(
+    (total, row) => total + n(row.total_water_l),
+    0,
+  );
   const recycledWater = rows.reduce((total, row) => {
     const rowTotalWater = n(row.total_water_l);
     const rowRecyclingPct = n(row.water_recycling_rate_pct);
     return total + (rowTotalWater * rowRecyclingPct) / 100;
   }, 0);
-  const recyclingRate = totalWater === 0 ? 0 : (recycledWater / totalWater) * 100;
+  const recyclingRate =
+    totalWater === 0 ? 0 : (recycledWater / totalWater) * 100;
   const latest = latestRow(rows);
 
   const waterByPropertyFromSupabase = rows.map((row) => ({
     name: row.property_name,
     value: n(row.total_water_l) / 1000,
-    saved: (n(row.total_water_l) * n(row.water_recycling_rate_pct)) / 100 / 1000,
+    saved:
+      (n(row.total_water_l) * n(row.water_recycling_rate_pct)) / 100 / 1000,
   }));
 
   const waterSourceSplitFromSupabase = [
-    { name: 'Municipal', value: n(latest?.municipal_share_pct), color: C.blueDark },
-    { name: 'Groundwater', value: n(latest?.groundwater_share_pct), color: C.blue },
-    { name: 'Rainwater', value: n(latest?.rainwater_share_pct), color: C.teal },
-    { name: 'Recycled', value: n(latest?.water_recycling_rate_pct), color: C.primaryLight },
+    {
+      name: "Municipal",
+      value: n(latest?.municipal_share_pct),
+      color: C.blueDark,
+    },
+    {
+      name: "Groundwater",
+      value: n(latest?.groundwater_share_pct),
+      color: C.blue,
+    },
+    { name: "Rainwater", value: n(latest?.rainwater_share_pct), color: C.teal },
+    {
+      name: "Recycled",
+      value: n(latest?.water_recycling_rate_pct),
+      color: C.primaryLight,
+    },
   ];
 
   const waterRecyclingTrendFromSupabase = rows.map((row) => ({
@@ -409,7 +598,11 @@ export function WaterManagement({ rows }: { rows: SustainabilityEnvironmentRow[]
           />
           <StatTile
             label="Water / Occupied Room"
-            value={latest?.water_l_per_occupied_room == null ? 'N/A' : `${Number(latest.water_l_per_occupied_room).toFixed(1)} L`}
+            value={
+              latest?.water_l_per_occupied_room == null
+                ? "N/A"
+                : `${Number(latest.water_l_per_occupied_room).toFixed(1)} L`
+            }
             sub="Latest available month"
             accent={C.green}
           />
@@ -529,7 +722,11 @@ export function WaterManagement({ rows }: { rows: SustainabilityEnvironmentRow[]
 }
 
 // ── Waste Management ─────────────────────────────────────────────────────────
-export function WasteManagement({ rows }: { rows: SustainabilityEnvironmentRow[] }) {
+export function WasteManagement({
+  rows,
+}: {
+  rows: SustainabilityEnvironmentRow[];
+}) {
   if (rows.length === 0) {
     return (
       <div>
@@ -537,22 +734,32 @@ export function WasteManagement({ rows }: { rows: SustainabilityEnvironmentRow[]
           title="Waste Management"
           subtitle="Generation, recycling and diversion performance"
         />
-        {noDataMessage("Waste Management", "Add rows to sustainability_environment_dashboard_monthly")}
+        {noDataMessage(
+          "Waste Management",
+          "Add rows to sustainability_environment_dashboard_monthly",
+        )}
       </div>
     );
   }
 
-  const totalWaste = rows.reduce((total, row) => total + n(row.total_waste_kg), 0);
-  const divertedWaste = rows.reduce((total, row) => total + n(row.diverted_kg), 0);
+  const totalWaste = rows.reduce(
+    (total, row) => total + n(row.total_waste_kg),
+    0,
+  );
+  const divertedWaste = rows.reduce(
+    (total, row) => total + n(row.diverted_kg),
+    0,
+  );
   const landfillWaste = rows.reduce((total, row) => {
     return total + (n(row.total_waste_kg) * n(row.landfill_rate_pct)) / 100;
   }, 0);
-  const diversionRate = totalWaste === 0 ? 0 : (divertedWaste / totalWaste) * 100;
+  const diversionRate =
+    totalWaste === 0 ? 0 : (divertedWaste / totalWaste) * 100;
   const latest = latestRow(rows);
 
   const wasteDiversionFromSupabase = [
-    { name: 'Diverted', value: divertedWaste / 1000, color: C.primary },
-    { name: 'Landfill', value: landfillWaste / 1000, color: C.red },
+    { name: "Diverted", value: divertedWaste / 1000, color: C.primary },
+    { name: "Landfill", value: landfillWaste / 1000, color: C.red },
   ];
 
   const wasteMonthlyFromSupabase = rows.map((row) => ({
@@ -589,7 +796,11 @@ export function WasteManagement({ rows }: { rows: SustainabilityEnvironmentRow[]
           />
           <StatTile
             label="Recycling Rate"
-            value={latest?.recycling_rate_pct == null ? 'N/A' : `${n(latest.recycling_rate_pct).toFixed(1)}%`}
+            value={
+              latest?.recycling_rate_pct == null
+                ? "N/A"
+                : `${n(latest.recycling_rate_pct).toFixed(1)}%`
+            }
             sub="Latest month"
             accent={C.accent}
           />
@@ -674,7 +885,11 @@ export function WasteManagement({ rows }: { rows: SustainabilityEnvironmentRow[]
 }
 
 // ── Biodiversity ─────────────────────────────────────────────────────────────
-export function Biodiversity({ rows = [] }: { rows?: Record<string, unknown>[] }) {
+export function Biodiversity({
+  rows = [],
+}: {
+  rows?: Record<string, unknown>[];
+}) {
   if (rows.length === 0) {
     return (
       <div>
@@ -784,13 +999,25 @@ export function Biodiversity({ rows = [] }: { rows?: Record<string, unknown>[] }
     );
   }
 
-  const sortedRows = [...rows].sort((a, b) => Number(b.report_year) - Number(a.report_year));
+  const sortedRows = [...rows].sort(
+    (a, b) => Number(b.report_year) - Number(a.report_year),
+  );
   const latest = sortedRows[0];
-  const totalSpecies = rows.reduce((acc, row) => acc + Number(row.species_richness || 0), 0);
-  const totalHabitat = rows.reduce((acc, row) => acc + Number(row.protected_habitat_hectares || 0), 0);
-  const activeProjects = rows.reduce((acc, row) => acc + Number(row.active_conservation_projects || 0), 0);
+  const totalSpecies = rows.reduce(
+    (acc, row) => acc + Number(row.species_richness || 0),
+    0,
+  );
+  const totalHabitat = rows.reduce(
+    (acc, row) => acc + Number(row.protected_habitat_hectares || 0),
+    0,
+  );
+  const activeProjects = rows.reduce(
+    (acc, row) => acc + Number(row.active_conservation_projects || 0),
+    0,
+  );
 
-  const isAllProperties = Array.from(new Set(rows.map(r => r.property_id))).length > 1;
+  const isAllProperties =
+    Array.from(new Set(rows.map((r) => r.property_id))).length > 1;
 
   return (
     <div>
@@ -802,7 +1029,10 @@ export function Biodiversity({ rows = [] }: { rows?: Record<string, unknown>[] }
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatTile
             label="Species Recorded"
-            value={(isAllProperties ? totalSpecies : (latest.species_richness as number || 0)).toString()}
+            value={(isAllProperties
+              ? totalSpecies
+              : (latest.species_richness as number) || 0
+            ).toString()}
             sub={isAllProperties ? "Total across properties" : "Latest survey"}
             accent={C.teal}
           />

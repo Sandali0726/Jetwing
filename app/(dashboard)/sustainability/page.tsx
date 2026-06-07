@@ -67,6 +67,13 @@ function formatDateLabel(dateString: string) {
   });
 }
 
+function toYearMonth(dateString: string) {
+  return {
+    year: Number(dateString.slice(0, 4)),
+    month: Number(dateString.slice(5, 7)),
+  };
+}
+
 function Dropdown({
   icon: Icon,
   options,
@@ -194,6 +201,8 @@ export default function SustainabilityPage() {
   const [esgRows, setEsgRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [environmentLoading, setEnvironmentLoading] = useState<boolean>(true);
+  const [environmentError, setEnvironmentError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState<string>(() => {
     const date = new Date();
     date.setMonth(date.getMonth() - 1);
@@ -222,14 +231,12 @@ export default function SustainabilityPage() {
         setLoading(true);
         setError(null);
 
-        const [propertyRows, dashboardRows, dashboardData] = await Promise.all([
+        const [propertyRows, dashboardData] = await Promise.all([
           getProperties(),
-          getEnvironmentDashboardRows(),
           getSustainabilityDashboardData(),
         ]);
 
         setProperties(propertyRows);
-        setEnvironmentRows(dashboardRows);
         setBiodiversityRows(
           (dashboardData?.biodiversity as Record<string, unknown>[]) || [],
         );
@@ -253,6 +260,36 @@ export default function SustainabilityPage() {
     loadInitialData();
   }, []);
 
+  useEffect(() => {
+    async function loadEnvironmentRows() {
+      try {
+        setEnvironmentLoading(true);
+        setEnvironmentError(null);
+
+        const start = toYearMonth(startDate);
+        const end = toYearMonth(endDate);
+
+        const rows = await getEnvironmentDashboardRows({
+          propertyId: selectedPropertyId,
+          startYear: start.year,
+          startMonth: start.month,
+          endYear: end.year,
+          endMonth: end.month,
+        });
+
+        setEnvironmentRows(rows);
+      } catch (err) {
+        console.error(err);
+        setEnvironmentRows([]);
+        setEnvironmentError("Failed to load environment data from Supabase.");
+      } finally {
+        setEnvironmentLoading(false);
+      }
+    }
+
+    loadEnvironmentRows();
+  }, [selectedPropertyId, startDate, endDate]);
+
   const propertyOptions = [
     "All Properties",
     ...properties.map((p) => p.property_name),
@@ -275,11 +312,6 @@ export default function SustainabilityPage() {
     );
     setSelectedPropertyId(matchedProperty?.property_id ?? "all");
   }
-
-  const visibleRows =
-    selectedPropertyId === "all"
-      ? environmentRows
-      : environmentRows.filter((row) => row.property_id === selectedPropertyId);
 
   function filterByProperty<T extends { property_id?: string }>(rows: T[]) {
     if (selectedPropertyId === "all") return rows;
@@ -320,30 +352,72 @@ export default function SustainabilityPage() {
 
     switch (view) {
       case "overview":
-        // compute year/month from ISO date inputs
-        const sYearNum = Number(startDate.slice(0, 4));
-        const sMonthNum = Number(startDate.slice(5, 7));
-        const eYearNum = Number(endDate.slice(0, 4));
-        const eMonthNum = Number(endDate.slice(5, 7));
+        const start = toYearMonth(startDate);
+        const end = toYearMonth(endDate);
         return (
           <Overview
             propertyId={
               selectedPropertyId === "all" ? undefined : selectedPropertyId
             }
-            startYear={sYearNum}
-            startMonth={sMonthNum}
-            endYear={eYearNum}
-            endMonth={eMonthNum}
+            startYear={start.year}
+            startMonth={start.month}
+            endYear={end.year}
+            endMonth={end.month}
           />
         );
       case "climate":
-        return <ClimateAction rows={visibleRows} />;
+        return environmentLoading ? (
+          <div className="p-6 text-sm" style={{ color: C.subtext }}>
+            Loading climate data...
+          </div>
+        ) : environmentError ? (
+          <div className="p-6 text-sm text-red-600">{environmentError}</div>
+        ) : (
+          (() => {
+            const s = toYearMonth(startDate);
+            const e = toYearMonth(endDate);
+            return (
+              <ClimateAction
+                rows={environmentRows}
+                showHotelComparison={selectedPropertyId === "all"}
+                startYear={s.year}
+                startMonth={s.month}
+                endYear={e.year}
+                endMonth={e.month}
+              />
+            );
+          })()
+        );
       case "energy":
-        return <EnergyManagement rows={visibleRows} />;
+        return environmentLoading ? (
+          <div className="p-6 text-sm" style={{ color: C.subtext }}>
+            Loading energy data...
+          </div>
+        ) : environmentError ? (
+          <div className="p-6 text-sm text-red-600">{environmentError}</div>
+        ) : (
+          <EnergyManagement rows={environmentRows} />
+        );
       case "water":
-        return <WaterManagement rows={visibleRows} />;
+        return environmentLoading ? (
+          <div className="p-6 text-sm" style={{ color: C.subtext }}>
+            Loading water data...
+          </div>
+        ) : environmentError ? (
+          <div className="p-6 text-sm text-red-600">{environmentError}</div>
+        ) : (
+          <WaterManagement rows={environmentRows} />
+        );
       case "waste":
-        return <WasteManagement rows={visibleRows} />;
+        return environmentLoading ? (
+          <div className="p-6 text-sm" style={{ color: C.subtext }}>
+            Loading waste data...
+          </div>
+        ) : environmentError ? (
+          <div className="p-6 text-sm text-red-600">{environmentError}</div>
+        ) : (
+          <WasteManagement rows={environmentRows} />
+        );
       case "biodiversity":
         return <Biodiversity rows={filterByProperty(biodiversityRows)} />;
       case "community":
