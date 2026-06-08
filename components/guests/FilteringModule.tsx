@@ -1,8 +1,9 @@
 "use client"
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Calendar, Filter, X, ChevronRight, ChevronLeft, ChevronDown, User, Mail, Phone, Globe, Hotel, CalendarDays, ExternalLink, Award, CreditCard, Activity, Check, Sparkles } from 'lucide-react';
-import { PASSENGERS } from '@/lib/mock-data';
+import { Search, Calendar, Filter, X, ChevronRight, ChevronLeft, ChevronDown, User, Mail, Phone, Globe, Hotel, CalendarDays, ExternalLink, Award, CreditCard, Activity, Check, Sparkles, Send, RefreshCcw, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { guestApi, ApiClientError, type OfferWithProperty } from '@/lib/api/client';
+import type { GuestListItem } from '@/lib/guests/types';
 import { cn } from '@/lib/utils';
 import { buildGuestVector, scoreGuests, type GuestScore } from '@/lib/guestScoring';
 
@@ -25,10 +26,64 @@ const COLORS = {
   muted: '#666',
 };
 
+// Multi-select dropdown — pick one or more options per category.
+function MultiSelect({ label, options, selected, onToggle }: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onToggle: (option: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <p className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>{label}</p>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border bg-white text-sm transition-colors"
+        style={{ borderColor: COLORS.border }}
+      >
+        <span className="truncate" style={{ color: selected.length ? COLORS.text : COLORS.muted, fontWeight: selected.length ? 600 : 400 }}>
+          {selected.length ? `${selected.length} selected` : 'All'}
+        </span>
+        <ChevronDown className={cn('w-4 h-4 shrink-0 transition-transform', open ? 'rotate-180' : '')} style={{ color: COLORS.muted }} />
+      </button>
+      {open && (
+        <>
+          {/* click-away backdrop — keeps the menu open across multiple toggles */}
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute z-30 mt-1 w-full rounded-lg border bg-white shadow-lg py-1 max-h-60 overflow-y-auto" style={{ borderColor: COLORS.border }}>
+            {options.map((opt) => {
+              const active = selected.includes(opt);
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => onToggle(opt)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-slate-50"
+                >
+                  <span
+                    className="w-4 h-4 rounded border flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: active ? COLORS.primary : 'white', borderColor: active ? COLORS.primary : '#CBD5E1' }}
+                  >
+                    {active && <Check className="w-3 h-3 text-white" />}
+                  </span>
+                  <span style={{ color: active ? COLORS.primary : COLORS.text, fontWeight: active ? 600 : 400 }}>{opt}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function FilteringModule() {
   // State for Filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDate, setSelectedDate] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({
     hotel: [],
     country: [],
@@ -41,9 +96,7 @@ export default function FilteringModule() {
   });
 
   // State for UI
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [expandedSections, setExpandedSections] = useState<string[]>(['hotel']);
-  const [selectedPassenger, setSelectedPassenger] = useState<typeof PASSENGERS[0] | null>(null);
+  const [selectedPassenger, setSelectedPassenger] = useState<GuestListItem | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Pagination State
@@ -51,14 +104,51 @@ export default function FilteringModule() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
   // Sorting State
-  const [sortConfig, setSortConfig] = useState<{ key: keyof typeof PASSENGERS[0]; direction: 'asc' | 'desc' } | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: keyof GuestListItem; direction: 'asc' | 'desc' } | null>(null);
 
-  // Live model scores keyed by passenger id (undefined = not yet scored, null = failed).
-  const [scores, setScores] = useState<Record<number, GuestScore | null>>({});
+  // Live guest data from the backend (GET /api/v1/customers).
+  const [guests, setGuests] = useState<GuestListItem[]>([]);
+  const [loadingGuests, setLoadingGuests] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingGuests(true);
+    guestApi
+      .listCustomers({ limit: 200 })
+      .then((res) => { if (!cancelled) { setGuests(res.data); setLoadError(null); } })
+      .catch((e) => {
+        if (cancelled) return;
+        if (e instanceof ApiClientError && (e.status === 401 || e.status === 403)) {
+          setLoadError('Sign in as an Admin or Revenue Manager to view guest profiles.');
+        } else {
+          setLoadError(e instanceof Error ? e.message : 'Failed to load guests.');
+        }
+      })
+      .finally(() => { if (!cancelled) setLoadingGuests(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Live model scores keyed by guest id (undefined = not yet scored, null = failed).
+  const [scores, setScores] = useState<Record<string, GuestScore | null>>({});
+
+  // Selection + "send offer" flow.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [sendOpen, setSendOpen] = useState(false);
+  const [offersList, setOffersList] = useState<OfferWithProperty[]>([]);
+  const [loadingOffers, setLoadingOffers] = useState(false);
+  const [chosenOfferId, setChosenOfferId] = useState('');
+  const [sending, setSending] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; kind: 'ok' | 'err' } | null>(null);
+
+  const flash = (msg: string, kind: 'ok' | 'err' = 'ok') => {
+    setToast({ msg, kind });
+    setTimeout(() => setToast(null), 5000);
+  };
 
   // Filtering Logic
   const filteredPassengers = useMemo(() => {
-    return PASSENGERS.filter(p => {
+    return guests.filter(p => {
       // Search
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
@@ -70,10 +160,9 @@ export default function FilteringModule() {
         if (!matchesSearch) return false;
       }
 
-      // Date
-      if (selectedDate) {
-        if (p.checkIn !== selectedDate) return false;
-      }
+      // Date range (check-in within [dateFrom, dateTo]; ISO yyyy-mm-dd compares lexically)
+      if (dateFrom && p.checkIn < dateFrom) return false;
+      if (dateTo && p.checkIn > dateTo) return false;
 
       // Multi-filters
       for (const [key, values] of Object.entries(activeFilters)) {
@@ -90,7 +179,7 @@ export default function FilteringModule() {
 
       return true;
     });
-  }, [searchQuery, selectedDate, activeFilters]);
+  }, [guests, searchQuery, dateFrom, dateTo, activeFilters]);
 
   // Sorting Logic
   const sortedPassengers = useMemo(() => {
@@ -175,30 +264,97 @@ export default function FilteringModule() {
       loyaltyStatus: [],
     });
     setSearchQuery('');
-    setSelectedDate('');
+    setDateFrom('');
+    setDateTo('');
     setCurrentPage(1);
   };
 
-  const filterOptions = {
-    hotel: ["Jetwing Yala", "Jetwing Blue", "Jetwing Lagoon", "Jetwing Vil Uyana", "Jetwing Lighthouse", "Jetwing Kaduruketha"],
-    country: ["Germany", "United Kingdom", "France", "Australia", "India", "China", "United States", "Sri Lanka"],
-    bookingSource: ["Direct Website", "Booking.com", "Agoda", "Expedia", "Travel Agent"],
-    servicesUsed: ["Safari", "Spa", "Dining", "Transfers", "Excursions", "Wellness", "Whale Watching"],
-    futureBooking: ["Yes", "No"],
-    guestType: ["New Guest", "Repeat Guest", "VIP Guest"],
-    roomCategory: ["Standard", "Deluxe", "Suite", "Luxury Villa"],
-    loyaltyStatus: ["Bronze", "Silver", "Gold", "Platinum"],
+  // ── selection + send-offer handlers ─────────────────────────────────────────
+  const toggleSelect = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const allFilteredSelected =
+    filteredPassengers.length > 0 && filteredPassengers.every((g) => selectedIds.has(g.id));
+
+  const toggleSelectAll = () =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) filteredPassengers.forEach((g) => next.delete(g.id));
+      else filteredPassengers.forEach((g) => next.add(g.id));
+      return next;
+    });
+
+  const openSendModal = async () => {
+    setSendOpen(true);
+    setChosenOfferId('');
+    setLoadingOffers(true);
+    try {
+      const res = await guestApi.listOffers({ limit: 100 });
+      // Prefer ready-to-send offers; fall back to all if none are approved/active.
+      const ready = res.data.filter((o) => o.status === 'APPROVED' || o.status === 'ACTIVE');
+      setOffersList(ready.length ? ready : res.data);
+    } catch (e) {
+      flash(e instanceof Error ? e.message : 'Failed to load offers', 'err');
+      setOffersList([]);
+    } finally {
+      setLoadingOffers(false);
+    }
   };
 
+  const doSend = async () => {
+    if (!chosenOfferId) return;
+    setSending(true);
+    try {
+      const r = await guestApi.sendOfferToGuests(chosenOfferId, { customer_ids: Array.from(selectedIds) });
+      flash(
+        `${r.message}${r.data.skipped_no_email ? ` (${r.data.skipped_no_email} skipped — no email)` : ''}`,
+        r.data.failed ? 'err' : 'ok',
+      );
+      setSendOpen(false);
+      setSelectedIds(new Set());
+    } catch (e) {
+      flash(e instanceof Error ? e.message : 'Send failed', 'err');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Filter options derived from the loaded data, so every option matches a real value.
+  const filterOptions = useMemo<Record<string, string[]>>(() => {
+    const distinct = (getter: (g: GuestListItem) => string | string[]) => {
+      const set = new Set<string>();
+      guests.forEach((g) => {
+        const v = getter(g);
+        if (Array.isArray(v)) v.forEach((x) => x && set.add(x));
+        else if (v) set.add(v);
+      });
+      return Array.from(set).sort();
+    };
+    return {
+      hotel: distinct((g) => g.hotel),
+      country: distinct((g) => g.country),
+      bookingSource: distinct((g) => g.bookingSource),
+      servicesUsed: distinct((g) => g.servicesUsed),
+      futureBooking: ['Yes', 'No'],
+      guestType: distinct((g) => g.guestType),
+      roomCategory: distinct((g) => g.roomCategory),
+      loyaltyStatus: distinct((g) => g.loyaltyStatus),
+    };
+  }, [guests]);
+
   return (
-    <div className="flex flex-col gap-6 h-full">
+    <div className="flex flex-col gap-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight" style={{ color: COLORS.text }}>Guest Intelligence</h1>
         <p className="mt-1" style={{ color: COLORS.muted }}>View, search and filter guest profiles across all Jetwing properties.</p>
       </div>
 
-      {/* Toolbar - Single Row on Desktop, Stacked on Mobile */}
+      {/* Toolbar — search stays on its own, separate from the filter section */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center gap-4 bg-white p-4 rounded-xl border shadow-sm" style={{ borderColor: COLORS.border }}>
         {/* Search */}
         <div className="relative flex-1">
@@ -212,32 +368,68 @@ export default function FilteringModule() {
             style={{ borderColor: COLORS.border }}
           />
         </div>
+      </div>
 
-        {/* Date Picker */}
-        <div className="relative w-64">
-          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: COLORS.muted }} />
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 rounded-lg border outline-none focus:ring-2 transition-all"
-            style={{ borderColor: COLORS.border }}
-          />
-        </div>
+      {/* Filter Options Card — always visible */}
+      <div className="bg-white p-5 rounded-xl border shadow-sm" style={{ borderColor: COLORS.border }}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4" style={{ color: COLORS.primary }} />
+              <h3 className="font-bold text-sm" style={{ color: COLORS.text }}>Filter Options</h3>
+            </div>
+            <button
+              onClick={clearAllFilters}
+              className="text-xs font-bold underline hover:text-red-500 transition-colors"
+              style={{ color: COLORS.muted }}
+            >
+              Clear All
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-5">
+            {/* Date range */}
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Check-in From</p>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: COLORS.muted }} />
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
+                  className="w-full pl-9 pr-2 py-2 rounded-lg border text-sm outline-none focus:ring-2 transition-all"
+                  style={{ borderColor: COLORS.border }}
+                />
+              </div>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Check-in To</p>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: COLORS.muted }} />
+                <input
+                  type="date"
+                  value={dateTo}
+                  min={dateFrom || undefined}
+                  onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
+                  className="w-full pl-9 pr-2 py-2 rounded-lg border text-sm outline-none focus:ring-2 transition-all"
+                  style={{ borderColor: COLORS.border }}
+                />
+              </div>
+            </div>
 
-        {/* Filter Button */}
-        <button
-          onClick={() => setIsDrawerOpen(true)}
-          className="flex items-center gap-2 px-6 py-2 rounded-lg border font-semibold transition-all hover:bg-slate-50"
-          style={{ borderColor: COLORS.border, color: COLORS.text }}
-        >
-          <Filter className="w-4 h-4" />
-          Filters
-        </button>
+            {/* Category multi-selects */}
+            {Object.entries(filterOptions).map(([key, options]) => (
+              <MultiSelect
+                key={key}
+                label={key.replace(/([A-Z])/g, ' $1').trim()}
+                options={options}
+                selected={activeFilters[key] ?? []}
+                onToggle={(option) => toggleFilter(key, option)}
+              />
+            ))}
+          </div>
       </div>
 
       {/* Active Filter Chips */}
-      {(Object.values(activeFilters).flat().length > 0 || selectedDate || searchQuery) && (
+      {(Object.values(activeFilters).flat().length > 0 || dateFrom || dateTo || searchQuery) && (
         <div className="flex flex-wrap items-center gap-2">
           {searchQuery && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border transition-all" style={{ backgroundColor: `${COLORS.primary}10`, borderColor: COLORS.primary, color: COLORS.primary }}>
@@ -245,10 +437,16 @@ export default function FilteringModule() {
               <button onClick={() => setSearchQuery('')}><X className="w-3 h-3" /></button>
             </div>
           )}
-          {selectedDate && (
+          {dateFrom && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border transition-all" style={{ backgroundColor: `${COLORS.primary}10`, borderColor: COLORS.primary, color: COLORS.primary }}>
-              {formatDate(selectedDate)}
-              <button onClick={() => setSelectedDate('')}><X className="w-3 h-3" /></button>
+              From: {formatDate(dateFrom)}
+              <button onClick={() => setDateFrom('')}><X className="w-3 h-3" /></button>
+            </div>
+          )}
+          {dateTo && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border transition-all" style={{ backgroundColor: `${COLORS.primary}10`, borderColor: COLORS.primary, color: COLORS.primary }}>
+              To: {formatDate(dateTo)}
+              <button onClick={() => setDateTo('')}><X className="w-3 h-3" /></button>
             </div>
           )}
           {Object.entries(activeFilters).map(([key, values]) =>
@@ -271,15 +469,45 @@ export default function FilteringModule() {
 
       {/* Result Summary */}
       <div className="text-sm font-medium" style={{ color: COLORS.muted }}>
-        Showing {filteredPassengers.length} Passengers
+        {loadingGuests ? 'Loading guests…' : `Showing ${filteredPassengers.length} of ${guests.length} guests`}
       </div>
 
+      {/* Selection action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center justify-between gap-3 bg-white border rounded-xl px-4 py-3 shadow-sm" style={{ borderColor: COLORS.primary }}>
+          <span className="text-sm font-semibold" style={{ color: COLORS.text }}>
+            {selectedIds.size} guest{selectedIds.size > 1 ? 's' : ''} selected
+          </span>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSelectedIds(new Set())} className="text-xs font-bold underline hover:text-red-500 transition-colors" style={{ color: COLORS.muted }}>
+              Clear selection
+            </button>
+            <button
+              onClick={openSendModal}
+              className="flex items-center gap-2 px-5 py-2 rounded-lg text-white text-sm font-bold transition-opacity hover:opacity-90"
+              style={{ backgroundColor: COLORS.primary }}
+            >
+              <Send className="w-4 h-4" /> Send Offer
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Passenger Table */}
-      <div className="flex-1 bg-white border rounded-xl shadow-sm overflow-hidden flex flex-col" style={{ borderColor: COLORS.border }}>
-        <div className="overflow-x-auto flex-1">
+      <div className="bg-white border rounded-xl shadow-sm overflow-hidden" style={{ borderColor: COLORS.border }}>
+        <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 bg-slate-50 border-b z-10" style={{ borderColor: COLORS.border }}>
               <tr>
+                <th className="px-6 py-4 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 rounded border-slate-300 cursor-pointer accent-[#8B9E23]"
+                    title="Select all matching guests"
+                  />
+                </th>
                 {[
                   { label: 'Guest Name', key: 'name' },
                   { label: 'Country', key: 'country' },
@@ -296,7 +524,7 @@ export default function FilteringModule() {
                     style={{ color: COLORS.muted }}
                     onClick={() => {
                       const direction = sortConfig?.key === col.key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
-                      setSortConfig({ key: col.key as keyof typeof PASSENGERS[0], direction });
+                      setSortConfig({ key: col.key as keyof GuestListItem, direction });
                     }}
                   >
                     <div className="flex items-center gap-2">
@@ -314,9 +542,21 @@ export default function FilteringModule() {
               </tr>
             </thead>
             <tbody className="divide-y" style={{ borderColor: COLORS.border }}>
-              {paginatedPassengers.length > 0 ? (
+              {loadingGuests ? (
+                <tr><td colSpan={11} className="px-6 py-20 text-center text-sm text-slate-400">Loading guests…</td></tr>
+              ) : loadError ? (
+                <tr><td colSpan={11} className="px-6 py-20 text-center text-sm text-red-600">{loadError}</td></tr>
+              ) : paginatedPassengers.length > 0 ? (
                 paginatedPassengers.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
+                    <td className="px-6 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(p.id)}
+                        onChange={() => toggleSelect(p.id)}
+                        className="w-4 h-4 rounded border-slate-300 cursor-pointer accent-[#8B9E23]"
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="font-bold text-sm" style={{ color: COLORS.text }}>{p.name}</span>
@@ -386,7 +626,7 @@ export default function FilteringModule() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={10} className="px-6 py-20 text-center">
+                  <td colSpan={11} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center gap-2">
                         <div className="p-4 rounded-full bg-slate-50">
                             <Search className="w-8 h-8 text-slate-300" />
@@ -450,89 +690,6 @@ export default function FilteringModule() {
         </div>
       </div>
 
-      {/* Filter Drawer */}
-      {isDrawerOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setIsDrawerOpen(false)} />
-          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="p-6 border-b flex items-center justify-between" style={{ borderColor: COLORS.border }}>
-              <div>
-                <h2 className="text-xl font-bold" style={{ color: COLORS.text }}>Filters</h2>
-                <p className="text-sm" style={{ color: COLORS.muted }}>Select one or more filters to narrow guest results.</p>
-              </div>
-              <button onClick={() => setIsDrawerOpen(false)} className="p-2 hover:bg-slate-100 rounded-full">
-                <X className="w-5 h-5" style={{ color: COLORS.muted }} />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {Object.entries(filterOptions).map(([key, options]) => {
-                const isExpanded = expandedSections.includes(key);
-                return (
-                  <div key={key} className="border rounded-lg overflow-hidden" style={{ borderColor: COLORS.border }}>
-                    <button
-                      onClick={() => setExpandedSections(prev =>
-                        isExpanded ? prev.filter(s => s !== key) : [...prev, key]
-                      )}
-                      className="w-full flex items-center justify-between p-4 bg-slate-50 font-semibold text-sm uppercase tracking-wider"
-                      style={{ color: COLORS.text }}
-                    >
-                      {key.replace(/([A-Z])/g, ' $1').trim()}
-                      <ChevronDown className={cn("w-4 h-4 transition-transform", isExpanded ? "" : "-rotate-90")} />
-                    </button>
-                    {isExpanded && (
-                      <div className="p-4 grid grid-cols-1 gap-2 animate-in fade-in duration-200">
-                        {options.map(option => (
-                          <button
-                            key={option}
-                            onClick={() => toggleFilter(key, option)}
-                            className="flex items-center gap-3 px-3 py-2 rounded-md transition-colors text-sm"
-                            style={{
-                              backgroundColor: activeFilters[key]?.includes(option) ? `${COLORS.primary}10` : 'transparent',
-                              color: activeFilters[key]?.includes(option) ? COLORS.primary : COLORS.text,
-                              fontWeight: activeFilters[key]?.includes(option) ? 600 : 400
-                            }}
-                          >
-                            <div className={cn(
-                              "w-4 h-4 border rounded flex items-center justify-center transition-colors",
-                              activeFilters[key]?.includes(option) ? "bg-green-600 border-green-600" : "bg-white border-slate-300"
-                            )}
-                            style={{
-                                backgroundColor: activeFilters[key]?.includes(option) ? COLORS.primary : 'white',
-                                borderColor: activeFilters[key]?.includes(option) ? COLORS.primary : '#CBD5E1'
-                            }}
-                            >
-                              {activeFilters[key]?.includes(option) && <Check className="w-3 h-3 text-white" />}
-                            </div>
-                            {option}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="p-6 border-t flex gap-3" style={{ borderColor: COLORS.border }}>
-              <button
-                onClick={clearAllFilters}
-                className="flex-1 py-3 rounded-lg border font-bold transition-colors hover:bg-slate-50"
-                style={{ borderColor: COLORS.border, color: COLORS.text }}
-              >
-                Clear All
-              </button>
-              <button
-                onClick={() => setIsDrawerOpen(false)}
-                className="flex-1 py-3 rounded-lg text-white font-bold transition-opacity hover:opacity-90"
-                style={{ backgroundColor: COLORS.primary }}
-              >
-                Apply Filters
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Guest Profile Modal */}
       {isModalOpen && selectedPassenger && (
@@ -593,7 +750,7 @@ export default function FilteringModule() {
                     <div className="p-4 rounded-xl border bg-slate-50 space-y-3" style={{ borderColor: COLORS.border }}>
                       <div className="flex justify-between items-center">
                         <span className="text-xs font-medium" style={{ color: COLORS.muted }}>Total Spend</span>
-                        <span className="text-lg font-bold" style={{ color: COLORS.text }}>LKR {(selectedPassenger.totalSpend * 300).toLocaleString()}</span>
+                        <span className="text-lg font-bold" style={{ color: COLORS.text }}>LKR {selectedPassenger.totalSpend.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-xs font-medium" style={{ color: COLORS.muted }}>Loyalty Tier</span>
@@ -665,7 +822,7 @@ export default function FilteringModule() {
                             <tr key={i} className="text-sm">
                               <td className="px-4 py-3 font-medium">{booking.ref}</td>
                               <td className="px-4 py-3 text-xs" style={{ color: COLORS.muted }}>{booking.date}</td>
-                              <td className="px-4 py-3 text-right font-bold">LKR {(booking.amount * 300).toLocaleString()}</td>
+                              <td className="px-4 py-3 text-right font-bold">LKR {booking.amount.toLocaleString()}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -695,9 +852,84 @@ export default function FilteringModule() {
             {/* Modal Footer */}
             <div className="p-6 border-t bg-slate-50 flex justify-end gap-3" style={{ borderColor: COLORS.border }}>
               <button onClick={() => setIsModalOpen(false)} className="px-6 py-2 rounded-lg font-bold border" style={{ borderColor: COLORS.border }}>Close</button>
-              <button className="px-6 py-2 rounded-lg text-white font-bold transition-opacity hover:opacity-90" style={{ backgroundColor: COLORS.primary }}>Send Offer</button>
+              <button
+                onClick={() => { setSelectedIds(new Set([selectedPassenger.id])); setIsModalOpen(false); openSendModal(); }}
+                className="px-6 py-2 rounded-lg text-white font-bold transition-opacity hover:opacity-90 flex items-center gap-2"
+                style={{ backgroundColor: COLORS.primary }}
+              >
+                <Send className="w-4 h-4" /> Send Offer
+              </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Send Offer modal */}
+      {sendOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !sending && setSendOpen(false)} />
+          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b flex items-center justify-between" style={{ borderColor: COLORS.border }}>
+              <div>
+                <h2 className="text-lg font-bold" style={{ color: COLORS.text }}>Send Offer</h2>
+                <p className="text-sm" style={{ color: COLORS.muted }}>
+                  Email a generated offer to {selectedIds.size} selected guest{selectedIds.size > 1 ? 's' : ''}.
+                </p>
+              </div>
+              <button onClick={() => !sending && setSendOpen(false)} className="p-2 hover:bg-slate-100 rounded-full">
+                <X className="w-5 h-5" style={{ color: COLORS.muted }} />
+              </button>
+            </div>
+            <div className="p-6 max-h-[50vh] overflow-y-auto">
+              {loadingOffers ? (
+                <p className="text-sm text-slate-400 text-center py-8">Loading offers…</p>
+              ) : offersList.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-8">No offers available. Generate and approve offers in Offer Recommendations first.</p>
+              ) : (
+                <div className="space-y-2">
+                  {offersList.map((o) => (
+                    <button
+                      key={o.offer_id}
+                      onClick={() => setChosenOfferId(o.offer_id)}
+                      className="w-full text-left p-3 rounded-xl border transition-all flex items-start gap-3"
+                      style={{ borderColor: chosenOfferId === o.offer_id ? COLORS.primary : COLORS.border, backgroundColor: chosenOfferId === o.offer_id ? `${COLORS.primary}10` : 'white' }}
+                    >
+                      <span className="w-4 h-4 mt-0.5 rounded-full border flex items-center justify-center shrink-0" style={{ borderColor: chosenOfferId === o.offer_id ? COLORS.primary : '#CBD5E1' }}>
+                        {chosenOfferId === o.offer_id && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS.primary }} />}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block font-bold text-sm" style={{ color: COLORS.text }}>{o.offer_title}</span>
+                        <span className="block text-xs" style={{ color: COLORS.muted }}>
+                          {o.properties?.property_name ?? 'Property'} · {o.offer_type} · {o.status}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t flex justify-end gap-3" style={{ borderColor: COLORS.border }}>
+              <button onClick={() => setSendOpen(false)} disabled={sending} className="px-5 py-2 rounded-lg font-bold border" style={{ borderColor: COLORS.border }}>Cancel</button>
+              <button
+                onClick={doSend}
+                disabled={!chosenOfferId || sending}
+                className="px-5 py-2 rounded-lg text-white font-bold flex items-center gap-2 disabled:opacity-50"
+                style={{ backgroundColor: COLORS.primary }}
+              >
+                {sending ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                Send to {selectedIds.size}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className={cn('fixed bottom-6 right-6 z-[80] flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl text-sm font-medium', toast.kind === 'ok' ? 'bg-slate-900 text-white' : 'bg-red-600 text-white')}>
+          {toast.kind === 'ok' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+          {toast.msg}
+          <button onClick={() => setToast(null)} className="ml-2 opacity-70 hover:opacity-100"><X className="w-4 h-4" /></button>
         </div>
       )}
     </div>

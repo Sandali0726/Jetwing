@@ -1,7 +1,7 @@
 // ============================================================================
 // Edge Function: generate-offers
 // Generates seasonal offers for one or all properties for a target month/year,
-// calling Claude (claude-opus-4-8) with structured prompts + prompt caching,
+// calling Gemini (GEMINI_MODEL, default gemini-2.5-flash) with structured prompts,
 // then writes PENDING_REVIEW offers and updates the offer_generation_runs row.
 //
 // Invoke:
@@ -12,7 +12,7 @@
 
 import { corsHeaders, json } from '../_shared/cors.ts';
 import { makeAdmin, checkSecret } from '../_shared/supabaseAdmin.ts';
-import { makeClient, generateJson, estimateCostUsd } from '../_shared/claude.ts';
+import { makeClient, generateJson, estimateCostUsd } from '../_shared/gemini.ts';
 import { buildOfferPrompt, validateOffers } from '../_shared/offers.ts';
 
 // deno-lint-ignore no-explicit-unknown

@@ -4,6 +4,8 @@
 // ============================================================================
 
 import type { SeasonalOffer, Campaign, OfferGenerationRun } from '@/lib/supabase/types';
+import type { GuestListItem } from '@/lib/guests/types';
+import type { ExecutiveDashboard, GuestAnalytics } from '@/lib/dashboard/types';
 
 export class ApiClientError extends Error {
   constructor(public status: number, message: string, public details?: unknown) {
@@ -81,6 +83,24 @@ export const guestApi = {
       method: 'POST',
       body: JSON.stringify(limit ? { limit } : {}),
     }),
+
+  // ── Customers (guest list) ───────────────────────────────────────────────────
+  listCustomers: (params: { limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => v != null && qs.set(k, String(v)));
+    return api<Paginated<GuestListItem>>(`/customers?${qs.toString()}`);
+  },
+
+  // Send a generated offer by email to a hand-picked set of guests.
+  sendOfferToGuests: (offerId: string, body: { customer_ids: string[]; confirm?: boolean }) =>
+    api<{
+      data: { sent: number; failed: number; skipped_no_email: number; dry_run: boolean; campaign_id: string; audience_size: number };
+      message: string;
+    }>(`/offers/${offerId}/send-to-guests`, { method: 'POST', body: JSON.stringify(body) }),
+
+  // ── Dashboards (aggregate analytics) ─────────────────────────────────────────
+  executiveDashboard: () => api<{ data: ExecutiveDashboard }>(`/dashboard/executive`),
+  guestAnalytics: () => api<{ data: GuestAnalytics }>(`/guests/analytics`),
 
   // ── Scoring ──────────────────────────────────────────────────────────────────
   scoreDistribution: () =>
