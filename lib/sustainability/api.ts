@@ -1,6 +1,7 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import type {
+  CommunityProgramRow,
   PropertyOption,
   SustainabilityEnvironmentRow,
   SustainabilityWasteMonthlySummaryRow,
@@ -105,6 +106,39 @@ export async function getWasteMonthlySummaryRows(params?: {
     : '/api/sustainability/waste-summary';
 
   return fetchJson<SustainabilityWasteMonthlySummaryRow[]>(url);
+}
+
+export async function getCommunityPrograms(params?: {
+  propertyId?: string;
+  startYear?: number;
+  startMonth?: number;
+  endYear?: number;
+  endMonth?: number;
+}): Promise<CommunityProgramRow[]> {
+  const searchParams = new URLSearchParams();
+
+  if (params?.propertyId && params.propertyId !== 'all') {
+    searchParams.set('propertyId', params.propertyId);
+  }
+
+  if (
+    params?.startYear !== undefined &&
+    params?.startMonth !== undefined &&
+    params?.endYear !== undefined &&
+    params?.endMonth !== undefined
+  ) {
+    searchParams.set('startYear', String(params.startYear));
+    searchParams.set('startMonth', String(params.startMonth));
+    searchParams.set('endYear', String(params.endYear));
+    searchParams.set('endMonth', String(params.endMonth));
+  }
+
+  const queryString = searchParams.toString();
+  const url = queryString
+    ? `/api/sustainability/community-programs?${queryString}`
+    : '/api/sustainability/community-programs';
+
+  return fetchJson<CommunityProgramRow[]>(url);
 }
 
 export async function getSustainabilityDashboardData() {

@@ -77,3 +77,23 @@ export type SustainabilityWasteMonthlySummaryRow = {
   occupancy_pct: number | null;
   waste_kg_per_occupied_room: number | null;
 };
+
+export type CommunityProgramRow = {
+  community_program_id: string;
+  property_id: string | null;
+  report_year: number;
+  report_month: number;
+  program_name: string;
+  program_type: string | null;
+  participants: number;
+  beneficiaries: number | null;
+  staff_volunteer_hours: number | null;
+  investment_lkr: number;
+  start_date: string | null;
+  end_date: string | null;
+  status: string | null;
+  description: string | null;
+  notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};

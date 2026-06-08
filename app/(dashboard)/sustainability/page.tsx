@@ -20,11 +20,13 @@ import {
 } from "@/components/sustainability/views/SocialGov";
 import {
   getEnvironmentDashboardRows,
+  getCommunityPrograms,
   getProperties,
   getSustainabilityDashboardData,
   getWasteMonthlySummaryRows,
 } from "@/lib/sustainability/api";
 import type {
+  CommunityProgramRow,
   PropertyOption,
   SustainabilityEnvironmentRow,
   SustainabilityWasteMonthlySummaryRow,
@@ -204,10 +206,15 @@ export default function SustainabilityPage() {
     Record<string, unknown>[]
   >([]);
   const [esgRows, setEsgRows] = useState<Record<string, unknown>[]>([]);
+  const [communityProgramRows, setCommunityProgramRows] = useState<
+    CommunityProgramRow[]
+  >([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [environmentLoading, setEnvironmentLoading] = useState<boolean>(true);
   const [environmentError, setEnvironmentError] = useState<string | null>(null);
+  const [communityProgramsLoading, setCommunityProgramsLoading] =
+    useState<boolean>(true);
   const [startDate, setStartDate] = useState<string>(() => {
     const date = new Date();
     date.setMonth(date.getMonth() - 1);
@@ -306,6 +313,34 @@ export default function SustainabilityPage() {
     loadEnvironmentRows();
   }, [selectedPropertyId, startDate, endDate]);
 
+  useEffect(() => {
+    async function loadCommunityPrograms() {
+      try {
+        setCommunityProgramsLoading(true);
+
+        const start = toYearMonth(startDate);
+        const end = toYearMonth(endDate);
+
+        const rows = await getCommunityPrograms({
+          propertyId: selectedPropertyId,
+          startYear: start.year,
+          startMonth: start.month,
+          endYear: end.year,
+          endMonth: end.month,
+        });
+
+        setCommunityProgramRows(rows);
+      } catch (err) {
+        console.error(err);
+        setCommunityProgramRows([]);
+      } finally {
+        setCommunityProgramsLoading(false);
+      }
+    }
+
+    loadCommunityPrograms();
+  }, [selectedPropertyId, startDate, endDate]);
+
   const propertyOptions = [
     "All Properties",
     ...properties.map((p) => p.property_name),
@@ -332,6 +367,21 @@ export default function SustainabilityPage() {
   function filterByProperty<T extends { property_id?: string }>(rows: T[]) {
     if (selectedPropertyId === "all") return rows;
     return rows.filter((row) => row.property_id === selectedPropertyId);
+  }
+
+  function filterByDate<
+    T extends { report_year?: number; report_month?: number },
+  >(rows: T[]) {
+    const s = toYearMonth(startDate);
+    const e = toYearMonth(endDate);
+    return rows.filter((row) => {
+      const ry = Number(row.report_year ?? NaN);
+      const rm = Number(row.report_month ?? NaN);
+      if (!Number.isFinite(ry) || !Number.isFinite(rm)) return false;
+      const afterStart = ry > s.year || (ry === s.year && rm >= s.month);
+      const beforeEnd = ry < e.year || (ry === e.year && rm <= e.month);
+      return afterStart && beforeEnd;
+    });
   }
 
   const handleExportReport = async () => {
@@ -473,20 +523,44 @@ export default function SustainabilityPage() {
           })()
         );
       case "biodiversity":
-        return <Biodiversity rows={filterByProperty(biodiversityRows)} />;
+        return (
+          <Biodiversity
+            rows={filterByDate(filterByProperty(biodiversityRows))}
+          />
+        );
       case "community":
-        return <CommunityImpact rows={filterByProperty(socialRows)} />;
+        return (() => {
+          const s = toYearMonth(startDate);
+          const e = toYearMonth(endDate);
+          return (
+            <CommunityImpact
+              rows={filterByDate(filterByProperty(socialRows))}
+              programRows={communityProgramRows}
+              programsLoading={communityProgramsLoading}
+              startYear={s.year}
+              startMonth={s.month}
+              endYear={e.year}
+              endMonth={e.month}
+            />
+          );
+        })();
       case "esg":
         return (
           <EsgReports
-            esgRows={filterByProperty(esgRows)}
-            governanceRows={filterByProperty(governanceRows)}
+            esgRows={filterByDate(filterByProperty(esgRows))}
+            governanceRows={filterByDate(filterByProperty(governanceRows))}
           />
         );
       case "risk":
-        return <RiskManagement rows={filterByProperty(riskRows)} />;
+        return (
+          <RiskManagement rows={filterByDate(filterByProperty(riskRows))} />
+        );
       case "goals":
-        return <SustainabilityGoals rows={filterByProperty(goalRows)} />;
+        return (
+          <SustainabilityGoals
+            rows={filterByDate(filterByProperty(goalRows))}
+          />
+        );
     }
   };
   return (
