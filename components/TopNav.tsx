@@ -25,8 +25,8 @@ export function TopNav({ email = '', roles = [] }: { email?: string; roles?: str
   }
 
   return (
-    <header className="h-16 border-b bg-white sticky top-0 z-10 w-full flex items-center justify-between px-8" style={{borderColor: '#E5E5E5'}}>
-      <div className="flex items-center w-96 relative">
+    <header className="h-16 border-b bg-white sticky top-0 z-10 w-full flex items-center justify-between pl-16 pr-4 sm:pr-6 lg:px-8" style={{borderColor: '#E5E5E5'}}>
+      <div className="flex items-center w-full max-w-96 relative">
         <Search className="w-4 h-4 absolute left-3" style={{color: '#999'}} />
         <input
           type="text"
