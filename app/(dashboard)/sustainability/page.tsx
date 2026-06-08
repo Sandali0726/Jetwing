@@ -10,13 +10,13 @@ import {
   EnergyManagement,
   WaterManagement,
   WasteManagement,
-  Biodiversity,
+  // Biodiversity,
 } from "@/components/sustainability/views/Environment";
 import {
   CommunityImpact,
-  EsgReports,
-  RiskManagement,
-  SustainabilityGoals,
+  // EsgReports,
+  // RiskManagement,
+  // SustainabilityGoals,
 } from "@/components/sustainability/views/SocialGov";
 import {
   getEnvironmentDashboardRows,
@@ -38,11 +38,11 @@ type ViewId =
   | "energy"
   | "water"
   | "waste"
-  | "biodiversity"
-  | "community"
-  | "esg"
-  | "risk"
-  | "goals";
+  | "community";
+// | "biodiversity"
+// | "esg"
+// | "risk"
+// | "goals";
 
 const viewLabels: Record<ViewId, string> = {
   overview: "Dashboard Overview",
@@ -50,11 +50,11 @@ const viewLabels: Record<ViewId, string> = {
   energy: "Energy Management",
   water: "Water Management",
   waste: "Waste Management",
-  biodiversity: "Biodiversity",
   community: "Community Impact",
-  esg: "ESG Reports",
-  risk: "Risk Management",
-  goals: "Sustainability Goals",
+  // biodiversity: "Biodiversity",
+  // esg: "ESG Reports",
+  // risk: "Risk Management",
+  // goals: "Sustainability Goals",
 };
 
 function toDateInputValue(date: Date) {
@@ -196,16 +196,16 @@ export default function SustainabilityPage() {
   const [wasteSummaryRows, setWasteSummaryRows] = useState<
     SustainabilityWasteMonthlySummaryRow[]
   >([]);
-  const [biodiversityRows, setBiodiversityRows] = useState<
-    Record<string, unknown>[]
-  >([]);
+  // const [biodiversityRows, setBiodiversityRows] = useState<
+  //   Record<string, unknown>[]
+  // >([]);
   const [socialRows, setSocialRows] = useState<Record<string, unknown>[]>([]);
-  const [riskRows, setRiskRows] = useState<Record<string, unknown>[]>([]);
-  const [goalRows, setGoalRows] = useState<Record<string, unknown>[]>([]);
-  const [governanceRows, setGovernanceRows] = useState<
-    Record<string, unknown>[]
-  >([]);
-  const [esgRows, setEsgRows] = useState<Record<string, unknown>[]>([]);
+  // const [riskRows, setRiskRows] = useState<Record<string, unknown>[]>([]);
+  // const [goalRows, setGoalRows] = useState<Record<string, unknown>[]>([]);
+  // const [governanceRows, setGovernanceRows] = useState<
+  //   Record<string, unknown>[]
+  // >([]);
+  // const [esgRows, setEsgRows] = useState<Record<string, unknown>[]>([]);
   const [communityProgramRows, setCommunityProgramRows] = useState<
     CommunityProgramRow[]
   >([]);
@@ -217,7 +217,7 @@ export default function SustainabilityPage() {
     useState<boolean>(true);
   const [startDate, setStartDate] = useState<string>(() => {
     const date = new Date();
-    date.setMonth(date.getMonth() - 1);
+    date.setMonth(date.getMonth() - 15);
     return toDateInputValue(date);
   });
   const [endDate, setEndDate] = useState<string>(() =>
@@ -249,18 +249,18 @@ export default function SustainabilityPage() {
         ]);
 
         setProperties(propertyRows);
-        setBiodiversityRows(
-          (dashboardData?.biodiversity as Record<string, unknown>[]) || [],
-        );
+        // setBiodiversityRows(
+        //   (dashboardData?.biodiversity as Record<string, unknown>[]) || [],
+        // );
         setSocialRows(
           (dashboardData?.social as Record<string, unknown>[]) || [],
         );
-        setRiskRows((dashboardData?.risks as Record<string, unknown>[]) || []);
-        setGoalRows((dashboardData?.goals as Record<string, unknown>[]) || []);
-        setGovernanceRows(
-          (dashboardData?.governance as Record<string, unknown>[]) || [],
-        );
-        setEsgRows((dashboardData?.esg as Record<string, unknown>[]) || []);
+        // setRiskRows((dashboardData?.risks as Record<string, unknown>[]) || []);
+        // setGoalRows((dashboardData?.goals as Record<string, unknown>[]) || []);
+        // setGovernanceRows(
+        //   (dashboardData?.governance as Record<string, unknown>[]) || [],
+        // );
+        // setEsgRows((dashboardData?.esg as Record<string, unknown>[]) || []);
       } catch (err) {
         console.error(err);
         setError("Failed to load sustainability data from Supabase.");
@@ -522,12 +522,12 @@ export default function SustainabilityPage() {
             );
           })()
         );
-      case "biodiversity":
-        return (
-          <Biodiversity
-            rows={filterByDate(filterByProperty(biodiversityRows))}
-          />
-        );
+      // case "biodiversity":
+      //   return (
+      //     <Biodiversity
+      //       rows={filterByDate(filterByProperty(biodiversityRows))}
+      //     />
+      //   );
       case "community":
         return (() => {
           const s = toYearMonth(startDate);
@@ -544,23 +544,23 @@ export default function SustainabilityPage() {
             />
           );
         })();
-      case "esg":
-        return (
-          <EsgReports
-            esgRows={filterByDate(filterByProperty(esgRows))}
-            governanceRows={filterByDate(filterByProperty(governanceRows))}
-          />
-        );
-      case "risk":
-        return (
-          <RiskManagement rows={filterByDate(filterByProperty(riskRows))} />
-        );
-      case "goals":
-        return (
-          <SustainabilityGoals
-            rows={filterByDate(filterByProperty(goalRows))}
-          />
-        );
+      // case "esg":
+      //   return (
+      //     <EsgReports
+      //       esgRows={filterByDate(filterByProperty(esgRows))}
+      //       governanceRows={filterByDate(filterByProperty(governanceRows))}
+      //     />
+      //   );
+      // case "risk":
+      //   return (
+      //     <RiskManagement rows={filterByDate(filterByProperty(riskRows))} />
+      //   );
+      // case "goals":
+      //   return (
+      //     <SustainabilityGoals
+      //       rows={filterByDate(filterByProperty(goalRows))}
+      //     />
+      //   );
     }
   };
   return (
