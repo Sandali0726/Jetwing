@@ -1,4 +1,4 @@
-import type { SystemBlock } from './claude.ts';
+import type { SystemBlock } from './gemini.ts';
 
 // deno-lint-ignore no-explicit-unknown
 type Row = Record<string, unknown>;

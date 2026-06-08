@@ -1,9 +1,8 @@
 // ============================================================================
 // Edge Function: generate-email
 // Generates a personalised marketing email for campaign audience member(s) with
-// Claude (claude-opus-4-8), using prompt caching so the shared offer/property
-// prefix is reused across the whole audience. Only first name + score tier are
-// sent to the LLM (no email / financial PII).
+// Gemini (GEMINI_MODEL, default gemini-2.5-flash). Only first name + score tier
+// are sent to the LLM (no email / financial PII).
 //
 // Invoke:
 //   POST { "audience_id": "…" }                       → one recipient
@@ -12,7 +11,7 @@
 
 import { corsHeaders, json } from '../_shared/cors.ts';
 import { makeAdmin, checkSecret } from '../_shared/supabaseAdmin.ts';
-import { makeClient, generateJson } from '../_shared/claude.ts';
+import { makeClient, generateJson } from '../_shared/gemini.ts';
 import { buildEmailPrompt, validateEmail } from '../_shared/emails.ts';
 
 // deno-lint-ignore no-explicit-unknown
