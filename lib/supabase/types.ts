@@ -249,7 +249,7 @@ export interface Database {
           date_of_birth: DateStr | null;
           gender: string | null;
           preferred_language: string;
-          tier_label: 'Standard' | 'Silver' | 'Gold' | 'Platinum';
+          tier_label: 'Bronze' | 'Standard' | 'Silver' | 'Gold' | 'Platinum';
           acquisition_channel: 'Direct' | 'OTA' | 'Travel_Agent' | 'Corporate' | 'Jetwing_Travels' | null;
           marketing_opt_in: boolean;
           consent_date: Timestamp | null;
@@ -270,7 +270,7 @@ export interface Database {
           date_of_birth?: DateStr | null;
           gender?: string | null;
           preferred_language?: string;
-          tier_label?: 'Standard' | 'Silver' | 'Gold' | 'Platinum';
+          tier_label?: 'Bronze' | 'Standard' | 'Silver' | 'Gold' | 'Platinum';
           acquisition_channel?: 'Direct' | 'OTA' | 'Travel_Agent' | 'Corporate' | 'Jetwing_Travels' | null;
           marketing_opt_in?: boolean;
           consent_date?: Timestamp | null;
@@ -308,11 +308,14 @@ export interface Database {
           satisfaction_score: number | null;
           nps_score: number | null;
           special_requests: string | null;
+          booking_source: 'Direct Website' | 'Booking.com' | 'Agoda' | 'Expedia' | 'Travel Agent' | null;
+          room_category: 'Standard' | 'Deluxe' | 'Suite' | 'Luxury Villa' | null;
+          services_used: string[];
           created_at: Timestamp;
         };
         Insert: Omit<Database['public']['Tables']['bookings']['Row'],
           'booking_id' | 'created_at' | 'children' | 'total_fb_spend_lkr' | 'total_ancillary_spend_lkr' |
-          'is_cancelled' | 'is_repeat_visit'> & {
+          'is_cancelled' | 'is_repeat_visit' | 'booking_source' | 'room_category' | 'services_used'> & {
           booking_id?: string;
           created_at?: Timestamp;
           children?: number;
@@ -320,6 +323,9 @@ export interface Database {
           total_ancillary_spend_lkr?: number;
           is_cancelled?: boolean;
           is_repeat_visit?: boolean;
+          booking_source?: 'Direct Website' | 'Booking.com' | 'Agoda' | 'Expedia' | 'Travel Agent' | null;
+          room_category?: 'Standard' | 'Deluxe' | 'Suite' | 'Luxury Villa' | null;
+          services_used?: string[];
         };
         Update: Partial<Database['public']['Tables']['bookings']['Insert']>;
         Relationships: [];

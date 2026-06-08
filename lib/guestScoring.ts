@@ -49,8 +49,6 @@ export function tierFor(score: number): string {
 // we derive a best-effort 18-vector from the fields we do have. When real
 // customer_features land, swap this for the server-side build_vector values.
 
-const LKR_PER_USD = 300; // the UI renders totalSpend * 300 as LKR; keep it consistent
-
 interface PassengerLike {
   country?: string;
   hotel?: string;
@@ -97,7 +95,7 @@ export function buildGuestVector(p: PassengerLike, now: Date = new Date()): numb
     .at(-1);
   const recencyDays = daysSince(lastDate, now);
 
-  const monetaryTotal = (p.totalSpend ?? 0) * LKR_PER_USD;
+  const monetaryTotal = p.totalSpend ?? 0; // already LKR from the API
   const monetaryAvgPerStay = monetaryTotal / freq;
   const los = nights(p.checkIn, p.checkOut);
 
