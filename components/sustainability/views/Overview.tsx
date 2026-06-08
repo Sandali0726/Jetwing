@@ -172,7 +172,11 @@ export default function Overview({
   });
 
   if (kpisLoading) {
-    return <div>Loading sustainability KPIs...</div>;
+    return (
+      <div className="p-6 text-sm" style={{ color: C.subtext }}>
+        Loading sustainability KPIs...
+      </div>
+    );
   }
 
   if (kpisError) {
