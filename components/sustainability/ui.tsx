@@ -579,6 +579,8 @@ export function VBar({
   xKey = "month",
   unit = "",
   stacked = false,
+  barSize,
+  slotWidthPx,
 }: {
   data: Record<string, string | number>[];
   bars: { key: string; name: string; color: string }[];
@@ -586,10 +588,19 @@ export function VBar({
   xKey?: string;
   unit?: string;
   stacked?: boolean;
+  barSize?: number;
+  slotWidthPx?: number;
 }) {
-  // fixed slot width per month for consistent bar sizing; allow horizontal scroll when many months
-  const slotWidth = 64; // px per month (bar + label padding)
+  // Dynamic slot width: wider categories (e.g., hotel names) get more horizontal space.
+  const longestLabel = data.reduce((max, row) => {
+    const raw = row[xKey];
+    const label = raw == null ? "" : String(raw);
+    return Math.max(max, label.length);
+  }, 0);
+  const slotWidth =
+    slotWidthPx ?? Math.max(64, Math.min(140, longestLabel * 7 + 20));
   const minWidth = Math.max(600, data.length * slotWidth);
+  const hasLongLabels = longestLabel > 14;
 
   return (
     <div style={{ height }}>
@@ -612,6 +623,11 @@ export function VBar({
               axisLine={false}
               tickLine={false}
               interval={0}
+              tickMargin={15}
+              padding={{ left: 12, right: 12 }}
+              angle={hasLongLabels ? -10 : 0}
+              textAnchor={hasLongLabels ? "middle" : "middle"}
+              height={hasLongLabels ? 56 : 30}
             />
             <YAxis
               tick={{ fontSize: 11 }}
@@ -637,7 +653,7 @@ export function VBar({
                 fill={b.color}
                 radius={[4, 4, 0, 0]}
                 stackId={stacked ? "a" : undefined}
-                barSize={Math.max(12, slotWidth - 16)}
+                barSize={barSize ?? Math.max(12, slotWidth - 16)}
               />
             ))}
           </BarChart>

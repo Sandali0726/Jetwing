@@ -77,9 +77,9 @@ function noDataMessage(title: string, subtitle: string) {
       <p className="text-sm font-semibold" style={{ color: C.text }}>
         No sustainability data found for this selection.
       </p>
-      <p className="text-xs mt-1" style={{ color: C.subtext }}>
+      {/* <p className="text-xs mt-1" style={{ color: C.subtext }}>
         {title} · {subtitle}
-      </p>
+      </p> */}
     </Card>
   );
 }
@@ -299,13 +299,12 @@ export function ClimateAction({
               title="Monthly Emissions Trend"
               subtitle="Scope 1 vs Scope 2 (tCO₂)"
             >
-              <VBar
+              <AreaTrend
                 data={carbonMonthlyFromSupabase}
-                stacked
                 xKey="label"
-                bars={[
-                  { key: "scope1", name: "Scope 1", color: C.accent },
-                  { key: "scope2", name: "Scope 2", color: C.blue },
+                series={[
+                  { key: "scope1", name: "Scope 1", color: C.red },
+                  { key: "scope2", name: "Scope 2", color: C.purple },
                 ]}
                 unit=""
               />
@@ -466,10 +465,23 @@ export function EnergyManagement({
     },
   ];
 
-  const energyByPropertyFromSupabase = rows.map((row) => ({
-    name: row.property_name,
-    value: n(row.total_energy_kwh) / 1000,
-  }));
+  const energyByPropertyFromSupabase = Array.from(
+    rows.reduce((map, row) => {
+      const key = row.property_id || row.property_name;
+      const current = map.get(key) ?? {
+        name: row.property_name,
+        value: 0,
+      };
+      current.value += n(row.total_energy_kwh);
+      map.set(key, current);
+      return map;
+    }, new Map<string, { name: string; value: number }>()),
+  )
+    .map(([, value]) => ({
+      name: value.name,
+      value: value.value / 1000,
+    }))
+    .sort((a, b) => b.value - a.value);
 
   return (
     <div>
@@ -648,12 +660,23 @@ export function WaterManagement({
         ? "Computed from total water / occupied nights"
         : "Latest available month";
 
-  const waterByPropertyFromSupabase = rows.map((row) => ({
-    name: row.property_name,
-    value: n(row.total_water_l) / 1000,
-    saved:
-      (n(row.total_water_l) * n(row.water_recycling_rate_pct)) / 100 / 1000,
-  }));
+  const waterByPropertyFromSupabase = Array.from(
+    rows.reduce((map, row) => {
+      const key = row.property_id || row.property_name;
+      const current = map.get(key) ?? {
+        name: row.property_name,
+        value: 0,
+        saved: 0,
+      };
+      const water = n(row.total_water_l);
+      current.value += water / 1000;
+      current.saved += (water * n(row.water_recycling_rate_pct)) / 100 / 1000;
+      map.set(key, current);
+      return map;
+    }, new Map<string, { name: string; value: number; saved: number }>()),
+  )
+    .map(([, value]) => value)
+    .sort((a, b) => b.value - a.value);
 
   // Aggregate source volumes across the selected period and compute
   // percentage share of total withdrawal. Fall back to the latest
@@ -851,6 +874,28 @@ export function WaterManagement({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="lg:col-span-2">
             <ChartCard
+              title="Water Recycling Performance"
+              subtitle="Recycled share trend (%)"
+            >
+              <AreaTrend
+                data={waterRecyclingTrendFromSupabase}
+                series={[
+                  { key: "recycled", name: "Recycled %", color: C.teal },
+                ]}
+                unit="%"
+              />
+            </ChartCard>
+          </div>
+          <ChartCard title="Withdrawal by Source" subtitle="Share of total">
+            <Donut data={waterSourceSplitFromSupabase} unit="%" />
+          </ChartCard>
+        </div>
+      </section>
+
+      <section data-export-block="true">
+        <div className="flex justify-center mb-6">
+          <div className="w-full max-w-5xl">
+            <ChartCard
               title="Water Consumption by Hotel"
               subtitle="Withdrawal (m³) vs savings achieved (m³)"
             >
@@ -863,28 +908,7 @@ export function WaterManagement({
                   { key: "saved", name: "Savings", color: C.teal },
                 ]}
                 unit=""
-              />
-            </ChartCard>
-          </div>
-          <ChartCard title="Withdrawal by Source" subtitle="Share of total">
-            <Donut data={waterSourceSplitFromSupabase} unit="%" />
-          </ChartCard>
-        </div>
-      </section>
-
-      <section data-export-block="true">
-        <div className="flex justify-center mb-6">
-          <div className="w-full max-w-6xl">
-            <ChartCard
-              title="Water Recycling Performance"
-              subtitle="Recycled share trend (%)"
-            >
-              <AreaTrend
-                data={waterRecyclingTrendFromSupabase}
-                series={[
-                  { key: "recycled", name: "Recycled %", color: C.teal },
-                ]}
-                unit="%"
+                barSize={40}
               />
             </ChartCard>
           </div>
@@ -1206,6 +1230,8 @@ export function WasteManagement({
                 bars={[{ key: "value", name: "Waste", color: C.muted }]}
                 unit=" t"
                 height={300}
+                barSize={40}
+                slotWidthPx={96}
               />
             </ChartCard>
           )}

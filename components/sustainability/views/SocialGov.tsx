@@ -55,9 +55,9 @@ function noDataMessage(title: string, subtitle: string) {
       <p className="text-sm font-semibold" style={{ color: C.text }}>
         No sustainability data found for this selection.
       </p>
-      <p className="text-xs mt-1" style={{ color: C.subtext }}>
+      {/* <p className="text-xs mt-1" style={{ color: C.subtext }}>
         {title} · {subtitle}
-      </p>
+      </p> */}
     </Card>
   );
 }
