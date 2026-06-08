@@ -100,7 +100,12 @@ export const guestApi = {
 
   // ── Dashboards (aggregate analytics) ─────────────────────────────────────────
   executiveDashboard: () => api<{ data: ExecutiveDashboard }>(`/dashboard/executive`),
-  guestAnalytics: () => api<{ data: GuestAnalytics }>(`/guests/analytics`),
+  guestAnalytics: (params: { from?: string; to?: string } = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => v && qs.set(k, v));
+    const q = qs.toString();
+    return api<{ data: GuestAnalytics }>(`/guests/analytics${q ? `?${q}` : ''}`);
+  },
 
   // ── Scoring ──────────────────────────────────────────────────────────────────
   scoreDistribution: () =>

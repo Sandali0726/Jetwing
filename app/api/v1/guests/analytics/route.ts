@@ -6,6 +6,10 @@ import type { GuestAnalytics } from '@/lib/dashboard/types';
  * GET /api/v1/guests/analytics
  * Guest analytics aggregated from customers + bookings + properties.
  * Staff (ADMIN | REVENUE_MANAGER).
+ *
+ * Optional query: from, to (yyyy-mm-dd) — filters bookings by booking_date.
+ * When a range is given, guest counts/nationalities reflect customers who
+ * booked within that window.
  */
 
 const MONTHS_SHORT = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -38,8 +42,14 @@ const monthLabel = (key: string) => {
   return `${MONTHS_SHORT[Number(m)]} ${y.slice(2)}`;
 };
 
-export const GET = route(async () => {
+export const GET = route(async (req) => {
   const { supabase } = await requireStaff();
+
+  const { searchParams } = new URL(req.url);
+  const from = searchParams.get('from'); // yyyy-mm-dd inclusive
+  const to = searchParams.get('to'); // yyyy-mm-dd inclusive
+  const hasRange = Boolean(from || to);
+  const inRange = (d: string) => (!from || d >= from) && (!to || d <= to);
 
   const [{ data: custData, error: custErr }, { data: bookData, error: bookErr }, { data: props }] =
     await Promise.all([
@@ -55,34 +65,40 @@ export const GET = route(async () => {
   const customers = (custData ?? []) as CustomerRow[];
   const bookings = (bookData ?? []) as BookingRow[];
   const live = bookings.filter((b) => !b.is_cancelled);
+  // Bookings within the selected date range (all live bookings when no range).
+  const ranged = hasRange ? live.filter((b) => inRange(b.booking_date)) : live;
   const nameById = new Map((props ?? []).map((p) => [p.property_id, p.property_name]));
   const today = new Date().toISOString().slice(0, 10);
 
+  // Guest base: when filtering, only customers who booked within the window.
+  const rangedCustomerIds = new Set(ranged.map((b) => b.customer_id));
+  const guestBase = hasRange ? customers.filter((c) => rangedCustomerIds.has(c.customer_id)) : customers;
+
   // ── KPIs ───────────────────────────────────────────────────────────────────
   const bookingsPerCustomer = new Map<string, number>();
-  for (const b of live) bookingsPerCustomer.set(b.customer_id, (bookingsPerCustomer.get(b.customer_id) ?? 0) + 1);
+  for (const b of ranged) bookingsPerCustomer.set(b.customer_id, (bookingsPerCustomer.get(b.customer_id) ?? 0) + 1);
   const returningGuests = [...bookingsPerCustomer.values()].filter((n) => n > 1).length;
 
   const kpis: GuestAnalytics['kpis'] = {
-    totalGuests: customers.length,
-    totalBookings: live.length,
-    totalRevenueLkr: live.reduce((s, b) => s + (b.total_revenue_lkr ?? 0), 0),
-    directBookings: live.filter((b) => channelOf(b.booking_channel) === 'Direct').length,
-    otaBookings: live.filter((b) => channelOf(b.booking_channel) === 'OTA').length,
-    futureBookings: live.filter((b) => b.check_in_date > today).length,
+    totalGuests: guestBase.length,
+    totalBookings: ranged.length,
+    totalRevenueLkr: ranged.reduce((s, b) => s + (b.total_revenue_lkr ?? 0), 0),
+    directBookings: ranged.filter((b) => channelOf(b.booking_channel) === 'Direct').length,
+    otaBookings: ranged.filter((b) => channelOf(b.booking_channel) === 'OTA').length,
+    futureBookings: ranged.filter((b) => b.check_in_date > today).length,
     returningGuests,
-    newGuests: Math.max(0, customers.length - returningGuests),
+    newGuests: Math.max(0, guestBase.length - returningGuests),
   };
 
   // ── Guest growth: bookings per month (last 12) ─────────────────────────────
   const growthMap = new Map<string, number>();
-  for (const b of live) growthMap.set(monthKey(b.booking_date), (growthMap.get(monthKey(b.booking_date)) ?? 0) + 1);
+  for (const b of ranged) growthMap.set(monthKey(b.booking_date), (growthMap.get(monthKey(b.booking_date)) ?? 0) + 1);
   const growthKeys = [...growthMap.keys()].sort().slice(-12);
   const growth = growthKeys.map((k) => ({ month: monthLabel(k), guests: growthMap.get(k)! }));
 
   // ── Booking source trend by month (last 8) ─────────────────────────────────
   const srcMap = new Map<string, Record<Channel, number>>();
-  for (const b of live) {
+  for (const b of ranged) {
     const k = monthKey(b.booking_date);
     const row = srcMap.get(k) ?? { Direct: 0, OTA: 0, TravelAgent: 0, Other: 0 };
     row[channelOf(b.booking_channel)]++;
@@ -93,7 +109,7 @@ export const GET = route(async () => {
 
   // ── Revenue by hotel ───────────────────────────────────────────────────────
   const revMap = new Map<string, number>();
-  for (const b of live) revMap.set(b.property_id, (revMap.get(b.property_id) ?? 0) + (b.total_revenue_lkr ?? 0));
+  for (const b of ranged) revMap.set(b.property_id, (revMap.get(b.property_id) ?? 0) + (b.total_revenue_lkr ?? 0));
   const revenueByHotel = [...revMap.entries()]
     .map(([id, revenue]) => ({ name: nameById.get(id) ?? 'Property', revenue }))
     .sort((a, b) => b.revenue - a.revenue)
@@ -101,7 +117,7 @@ export const GET = route(async () => {
 
   // ── Nationality distribution ───────────────────────────────────────────────
   const natMap = new Map<string, number>();
-  for (const c of customers) {
+  for (const c of guestBase) {
     const n = c.nationality ?? c.country_of_residence ?? 'Unknown';
     natMap.set(n, (natMap.get(n) ?? 0) + 1);
   }

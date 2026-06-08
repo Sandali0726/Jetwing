@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import {
   LineChart,
@@ -17,13 +17,16 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Calendar } from 'lucide-react';
 import { guestApi, ApiClientError } from '@/lib/api/client';
 import type { GuestAnalytics } from '@/lib/dashboard/types';
 
+// Props are accepted for compatibility with the parent page but are no longer
+// used — the analytics view manages its own date range and loads from the API.
 interface AnalyticsViewProps {
-  timePeriod: string;
-  updatePeriod: (period: string, opts?: { from?: string; to?: string }) => void;
+  timePeriod?: string;
+  customRange?: { from: string; to: string };
+  updatePeriod?: (period: string, opts?: { from?: string; to?: string }) => void;
 }
 
 const COLORS = ['#8B9E23', '#82ca9d', '#ffc658', '#ff7f7f', '#8884d8', '#E91E8C', '#00C49F', '#FFBB28'];
@@ -36,11 +39,15 @@ const AnalyticsView = (_props: AnalyticsViewProps) => {
   const [data, setData] = useState<GuestAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const firstLoad = useRef(true);
 
   useEffect(() => {
     let cancelled = false;
+    if (firstLoad.current) setLoading(true);
     guestApi
-      .guestAnalytics()
+      .guestAnalytics({ from: from || undefined, to: to || undefined })
       .then((res) => { if (!cancelled) { setData(res.data); setError(null); } })
       .catch((e) => {
         if (cancelled) return;
@@ -50,9 +57,9 @@ const AnalyticsView = (_props: AnalyticsViewProps) => {
           setError(e instanceof Error ? e.message : 'Failed to load analytics.');
         }
       })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .finally(() => { if (!cancelled) { setLoading(false); firstLoad.current = false; } });
     return () => { cancelled = true; };
-  }, []);
+  }, [from, to]);
 
   const kpis = data
     ? [
@@ -71,7 +78,50 @@ const AnalyticsView = (_props: AnalyticsViewProps) => {
     <div className="space-y-6">
       <Card className="w-full">
         <CardHeader>
-          <CardTitle className="text-xl font-bold">Guest Analytics Dashboard</CardTitle>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <CardTitle className="text-xl font-bold">Guest Analytics Dashboard</CardTitle>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2 rounded-lg border bg-white px-3 py-1.5" style={{ borderColor: '#E5E5E5' }}>
+                <Calendar className="w-4 h-4 shrink-0" style={{ color: '#8B9E23' }} />
+                <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                  From
+                  <input
+                    type="date"
+                    value={from}
+                    max={to || undefined}
+                    onChange={(e) => setFrom(e.target.value)}
+                    className="rounded-md border px-2 py-1 text-xs outline-none"
+                    style={{ borderColor: '#E5E5E5' }}
+                  />
+                </label>
+                <span className="text-xs text-slate-400">to</span>
+                <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                  To
+                  <input
+                    type="date"
+                    value={to}
+                    min={from || undefined}
+                    onChange={(e) => setTo(e.target.value)}
+                    className="rounded-md border px-2 py-1 text-xs outline-none"
+                    style={{ borderColor: '#E5E5E5' }}
+                  />
+                </label>
+              </div>
+              {(from || to) && (
+                <button
+                  onClick={() => { setFrom(''); setTo(''); }}
+                  className="text-xs font-bold underline text-slate-500 hover:text-red-500 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+          {(from || to) && (
+            <p className="text-xs text-slate-400 mt-1">
+              Showing bookings from {from || '—'} to {to || '—'}
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           {error && (
